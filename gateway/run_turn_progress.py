@@ -280,12 +280,10 @@ class GatewayTurnProgressMixin:
         cmd_full = args["command"].rstrip()
         header = "" if self._ctx.last_was_terminal_block[0] else t("gateway.progress.tool_head", emoji=emoji, tool=tool_name) + "\n"
         cap = self._preview_cap()
-        lines = cmd_full.splitlines()
-        cmd_short = lines[0] if lines else cmd_full
-        if len(cmd_short) > cap:
-            cmd_short = cmd_short[:cap - 3] + "..."
-        elif len(lines) > 1:
-            cmd_short += " ..."
+        # Sleep-aware, tail-biased preview: the budget goes to the work, not to a leading
+        # ``sleep 400;`` (a raw head-truncated first line shows only the wait).
+        from agent.display import terminal_preview_line
+        cmd_short = terminal_preview_line(cmd_full, cap=cap)
         return f"{header}```\n{cmd_full}\n```", f"{header}```\n{cmd_short}\n```"
 
     def _progress_build_message(self, tool_name, preview, args) -> Optional[str]:

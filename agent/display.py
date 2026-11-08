@@ -192,6 +192,121 @@ def _clip(text: str, n: int) -> str:
     return f"{text[:n]}{'...' if len(text) > n else ''}"
 
 
+# ── Terminal command previews: sleep-aware, tail-biased ────────────────────────────────────
+# A raw command head-truncated at the preview cap spends the whole budget on boilerplate:
+# ``sleep 400; grep -c "done: cards" /tmp/fanout.log`` shows only the sleep. Sleep segments
+# collapse into a wait badge and ``;``/``&&``/``||`` chains preview their LAST non-sleep
+# segment, so the visible characters carry the work, not the wait.
+
+_SLEEP_SEGMENT_RE = re.compile(r"^\s*sleep\s+([0-9]+(?:\.\d+)?)\s*([smh]?)\s*$", re.IGNORECASE)
+
+
+def _split_segments(text: str) -> list[str]:
+    """Split on ``;``/``&&``/``||`` OUTSIDE quotes.
+
+    A raw regex split bites on quoted punctuation — SQL statements legitimately end with ``;``
+    and use ``||`` for concatenation, so ``sqlite3 "db" "SELECT …;" | head`` would lose its last
+    segment to the in-SQL semicolon and preview the tail garbage (``'" | head``). Quote-aware scan;
+    backslash escapes honored inside double quotes.
+    """
+    segments: list[str] = []
+    current: list[str] = []
+    quote = ""
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and i + 1 < len(text) and quote == '"':
+                current.extend((ch, text[i + 1]))
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+            current.append(ch)
+        elif ch in "\"'":
+            quote = ch
+            current.append(ch)
+        elif text[i:i + 2] in ("&&", "||"):
+            segments.append("".join(current))
+            current = []
+            i += 2
+            continue
+        elif ch == ";":
+            segments.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+    segments.append("".join(current))
+    return segments
+
+
+def _sleep_seconds(segment: str) -> float | None:
+    """Seconds a pure ``sleep N[s|m|h]`` segment waits; None for anything else."""
+    match = _SLEEP_SEGMENT_RE.match(segment or "")
+    if not match:
+        return None
+    unit = (match.group(2) or "s").lower()
+    return float(match.group(1)) * {"s": 1.0, "m": 60.0, "h": 3600.0}.get(unit, 1.0)
+
+
+def _format_wait(seconds: float) -> str:
+    if seconds >= 5400:
+        return f"~{max(1, round(seconds / 3600))}h"
+    if seconds >= 90:
+        return f"~{max(1, round(seconds / 60))}m"
+    return f"{int(seconds)}s"
+
+
+def terminal_wait_badge(command: str) -> str:
+    """``"⏳ ~4m → "`` badge for a command whose sleep segments total a visible wait, else ``""``."""
+    total = 0.0
+    for segment in _split_segments(command or ""):
+        secs = _sleep_seconds(segment)
+        if secs is not None:
+            total += secs
+    if total < 20:
+        return ""
+    return f"⏳ {_format_wait(total)} → "
+
+
+def terminal_preview_line(command: str, cap: int = 40) -> str:
+    """One-line preview of a shell command, biased toward the useful part.
+
+    Sleep segments collapse into a ``⏳ ~Nm →`` badge so the cap is spent on the work;
+    chains preview their LAST non-sleep segment (``sleep 400; grep …`` shows the grep);
+    a pure-sleep command renders as ``⏳ waiting ~7m``; multi-line scripts keep the first
+    line plus ``...+N lines``. Head-truncated at ``cap``.
+    """
+    text = re.sub(r"\s+", " ", (command or "")).strip()
+    if not text:
+        return ""
+    lines = [line for line in (command or "").splitlines() if line.strip()]
+    if len(lines) > 1:
+        first = re.sub(r"\s+", " ", lines[0]).strip()
+        suffix = f" ...+{len(lines) - 1} lines"
+        budget = max(10, cap - len(suffix) - 3)
+        if len(first) > budget:
+            first = first[:budget].rstrip() + "..."
+        return first + suffix
+    wait = 0.0
+    work_parts: list[str] = []
+    for segment in _split_segments(text):
+        secs = _sleep_seconds(segment)
+        if secs is not None:
+            wait += secs
+        elif segment.strip():
+            work_parts.append(segment.strip())
+    badge = f"⏳ {_format_wait(wait)} → " if wait >= 20 else ""
+    work = work_parts[-1] if work_parts else ""
+    if not work:
+        return f"⏳ waiting {_format_wait(wait)}" if wait else text[:max(0, cap - 3)] + "..."
+    budget = max(10, cap - len(badge) - 3)
+    if len(work) > budget:
+        work = work[:budget].rstrip() + "..."
+    return badge + work
+
+
 @dataclass(frozen=True)
 class ToolPreview:
     """A compact tool preview plus presentation facts lost to truncation."""
