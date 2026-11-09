@@ -33,9 +33,8 @@ _GLOBAL_DEFAULTS: dict[str, Any] = {
     # argument preview, "verb" = verb only (keeps paths out of shared channels), "off"/false = static.
     "live_status": "full",
     # Catio: group chats (gateway chat_type "group") post ONLY the final reply — no tool-progress
-    # bubbles, previews, interim assistant commentary or thinking; the live status goes static
-    # (turn-start "thinking…"/elapsed text or typing_status_text). DMs ("dm") keep their
-    # configured rendering. Off by default.
+    # bubbles, previews, interim assistant commentary or thinking; the live typing status drops to
+    # verb-only. DMs ("dm") keep their configured rendering. Off by default.
     "quiet_group_chats": False,
 }
 
@@ -124,9 +123,9 @@ def quiet_group_chats_enabled(user_config: dict, platform_key: str, chat_type: s
     Discord channels) — post only the final reply. Tool progress resolves ``off`` with explicit
     intent (bubbles, previews and the Slack native task-card lane all die;
     :func:`resolve_tool_progress`), interim assistant messages and thinking stay out of the
-    chat, and the live per-tool status goes off so the turn-start assistant status keeps its
-    static text (:func:`resolve_live_status_mode`). One-to-one DMs (``chat_type`` ``"dm"``)
-    keep their configured rendering; every other chat type (CLI, webhook routes) is untouched.
+    chat, and the live typing status drops its argument preview
+    (:func:`resolve_live_status_mode`). One-to-one DMs (``chat_type`` ``"dm"``) keep their
+    configured rendering; every other chat type (CLI, webhook routes) is untouched.
     """
     if str(chat_type or "") != "group":
         return False
@@ -136,15 +135,13 @@ def quiet_group_chats_enabled(user_config: dict, platform_key: str, chat_type: s
 def resolve_live_status_mode(user_config: dict, platform_key: str, chat_type: str = "") -> str:
     """Catio: ``display.live_status`` with the per-chat-type quiet cap applied.
 
-    A group chat under ``display.quiet_group_chats`` shows no per-tool live status at all:
-    the mode resolves ``off`` and the turn-start assistant status keeps its static text
-    (``platforms.<name>.typing_status_text``, else the default "thinking…" / "still working…
-    (elapsed)") — tool verbs and argument previews stay out of shared channels. An explicit
+    A group chat under ``display.quiet_group_chats`` never renders the argument preview:
+    ``full`` drops to ``verb`` so commands and paths stay out of shared channels. An explicit
     ``verb`` or ``off`` resolves unchanged, in DMs as in group chats.
     """
     mode = resolve_display_setting(user_config, platform_key, "live_status", "full")
     if mode == "full" and quiet_group_chats_enabled(user_config, platform_key, chat_type):
-        return "off"
+        return "verb"
     return mode
 
 
