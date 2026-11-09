@@ -147,7 +147,10 @@ class TestSlackFullManifest:
         assert manifest["settings"]["socket_mode_enabled"] is True
         # Channel + DM scopes/events survive so the bot still works everywhere.
         bot_scopes = manifest["oauth_config"]["scopes"]["bot"]
-        for scope in ("commands", "channels:history", "groups:read", "im:history"):
+        for scope in ("commands", "channels:history", "groups:read", "im:history", "reactions:write"):
+            # reactions:write: the in-progress 👀 → ✅ message reaction is default-on in the
+            # Slack adapter (`extra.reactions`); a manifest without it installs a bot whose
+            # working/reaction indicator silently fails on missing_scope.
             assert scope in bot_scopes
         bot_events = manifest["settings"]["event_subscriptions"]["bot_events"]
         for event in ("message.im", "message.channels", "message.groups", "app_mention"):
