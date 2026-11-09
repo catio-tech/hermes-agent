@@ -2770,7 +2770,18 @@ class SlackAdapter(BasePlatformAdapter):
         self, chat_id: str, team_id: str, thread_ts: str, status: str, fail_label: str) -> None:
         """``assistant.threads.setStatus`` (empty ``status`` clears); failures are debug-logged."""
         try:
-            _set_status = _session_status_method(self._get_client(chat_id, team_id=team_id))
+            _client = self._get_client(chat_id, team_id=team_id)
+            _set_status = _session_status_method(_client)
+            if _sdk_supports_agent_sessions() and _set_status is getattr(_client, "agents_sessions_setStatus", None):
+                # Catio (#110374): the Agent Sessions API accepts only a closed enum
+                # (active|processing|suspended|closed); every legacy free-text payload — and the
+                # empty-string clear — is rejected with invalid_arguments, so the working
+                # indicator goes silently dark on slack-sdk >= 3.44 while the adapter keeps
+                # logging the failure at DEBUG. Map the lifecycle onto the enum: any working
+                # text becomes ``processing``, the clear becomes ``active`` (``processing`` does
+                # NOT auto-clear when the app replies, unlike the legacy compat bridge, so an
+                # unmapped clear would leave the spinner up for up to an hour).
+                status = "processing" if status else "active"
             await _set_status(channel_id=chat_id, thread_ts=thread_ts, status=status)
         except Exception as e:
             logger.debug("[Slack] assistant.threads.setStatus %s: %s", fail_label, e)

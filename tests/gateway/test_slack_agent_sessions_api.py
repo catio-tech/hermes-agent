@@ -40,10 +40,13 @@ class TestAgentSessionsApiRouting:
         a._app.client.agents_sessions_setStatus = AsyncMock()
         a._app.client.assistant_threads_setStatus = AsyncMock()
         await a.send_typing("C123", metadata={"thread_id": "parent_ts"})
+        # Catio (#110374): agents.sessions.setStatus accepts only the enum
+        # (active|processing|suspended|closed); free text is rejected with
+        # invalid_arguments, so working text maps to "processing".
         a._app.client.agents_sessions_setStatus.assert_called_once_with(
             channel_id="C123",
             thread_ts="parent_ts",
-            status="is thinking...",
+            status="processing",
         )
         a._app.client.assistant_threads_setStatus.assert_not_called()
 
@@ -57,12 +60,36 @@ class TestAgentSessionsApiRouting:
         await a.send_typing("C123", metadata={"thread_id": "parent_ts"})
         a._app.client.agents_sessions_setStatus.reset_mock()
         await a.stop_typing("C123", metadata={"thread_id": "parent_ts"})
+        # Catio (#110374): the legacy empty-string clear is also rejected by the enum; the
+        # clear maps to "active" (and "processing" does not auto-clear on reply, so an
+        # unmapped clear would strand the spinner).
         a._app.client.agents_sessions_setStatus.assert_called_once_with(
             channel_id="C123",
             thread_ts="parent_ts",
-            status="",
+            status="active",
         )
         a._app.client.assistant_threads_setStatus.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_free_text_status_maps_to_the_enum_per_call(self):
+        """Per-tool live status / typing_status_text phrases all collapse onto ``processing``
+        on the Agent Sessions API — Slack renders its own generic loading UX for it."""
+        _slack_mod._AGENT_SESSIONS_SUPPORTED = True
+        a = self._adapter()
+        a._app.client.agents_sessions_setStatus = AsyncMock()
+        await a._set_thread_status("C123", "", "parent_ts", "is running pytest --max-turns=40", "probe")
+        a._app.client.agents_sessions_setStatus.assert_called_once_with(
+            channel_id="C123", thread_ts="parent_ts", status="processing")
+
+    @pytest.mark.asyncio
+    async def test_legacy_sdk_keeps_free_text_status(self):
+        """slack-sdk < 3.44 keeps the legacy assistant.threads.setStatus: free text renders
+        as-is there, so the mapping must not touch that path."""
+        a = self._adapter()
+        a._app.client.assistant_threads_setStatus = AsyncMock()
+        await a._set_thread_status("C123", "", "parent_ts", "is thinking...", "probe")
+        a._app.client.assistant_threads_setStatus.assert_called_once_with(
+            channel_id="C123", thread_ts="parent_ts", status="is thinking...")
 
     @pytest.mark.asyncio
     async def test_thread_title_uses_agents_sessions_rename(self):
