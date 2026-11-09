@@ -2254,6 +2254,7 @@ display:
   focus_view: false       # CLI focus view (/focus) — reduced output, display-only
   platforms: {}           # Per-platform display overrides (see below)
   interim_assistant_messages: true  # Gateway: send natural mid-turn assistant updates as separate messages
+  quiet_group_chats: false  # Gateway: group chats (channels/MPIMs/servers) post only the final reply; DMs keep full rendering
   suppress_warning_notifications: false  # Opt-in: hide automatic warning/diagnostic notices (see messaging guide)
   show_commentary: true   # Codex models: deliver commentary-channel progress narration as visible mid-turn updates
   skin: default           # Built-in or custom CLI skin (see user-guide/features/skins)
@@ -2459,6 +2460,22 @@ display:
 From the CLI, use the canonical path — `hermes config set display.platforms.telegram.streaming false`. The shorthand `hermes config set platforms.telegram.streaming false` is accepted too: because per-platform *display* settings (`streaming`, `show_reasoning`, `tool_progress`, …) are only ever read from `display.platforms`, `config set`/`get`/`unset` redirect that shorthand to the canonical key and print a note. Connection keys under the top-level `platforms.<name>` block (`token`, `enabled`, `reply_to_mode`, `extra`) are not redirected. Writing them under the nested prefix (`hermes config set gateway.platforms.telegram.enabled true`) is redirected to the top-level `platforms.telegram.enabled` with a note: the gateway reads both blocks, but the top-level one wins on shared keys, so a nested write would be silently shadowed by an existing top-level value.
 
 Platforms without an override fall back to the global `tool_progress` value. Valid platform keys: `telegram`, `discord`, `slack`, `signal`, `whatsapp`, `matrix`, `mattermost`, `email`, `sms`, `dingtalk`, `feishu`, `wecom`, `weixin`, `bluebubbles`, `qqbot`, plus the name of any plugin platform (e.g. `homeassistant` from the Home Assistant plugin). The legacy `display.tool_progress_overrides` key still loads for backward compatibility but is deprecated and migrated into `display.platforms` on first load.
+
+### Per-chat-type quiet mode (verbose DMs, quiet shared channels)
+
+`display.quiet_group_chats: true` (default `false`) makes **group** conversations — anything the gateway stamps `chat_type: group`: Slack channels and group DMs/MPIMs, Telegram groups, Discord channels — post **only the final reply**. Tool-progress bubbles, previews and native task cards, interim assistant messages and thinking progress all stay out of the chat, and the Slack typing status drops its argument preview (verb only, so commands and paths stay out of shared channels). One-to-one DMs (`chat_type: dm`) keep whatever `tool_progress` / `interim_assistant_messages` render — nothing changes for them. Like every display setting it also scopes per platform:
+
+```yaml
+display:
+  tool_progress: all          # DMs: full rendering
+  quiet_group_chats: true    # group chats: final reply only
+  # or scoped to one platform:
+  # platforms:
+  #   slack:
+  #     quiet_group_chats: true
+```
+
+Set it from the CLI with `hermes config set display.quiet_group_chats true`, then restart the gateway. Clarify questions, approval prompts and busy acknowledgements still post in group chats — they are replies that need an answer, not progress narration.
 
 Signal is listed as a valid platform key because the setting can be saved per platform, but the current Signal adapter cannot edit sent messages and does not render tool-progress bubbles. Keep Signal `tool_progress` set to `off`; use the CLI or an editing-capable messaging platform if you need to watch each tool call live.
 

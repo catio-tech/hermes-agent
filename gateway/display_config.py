@@ -36,6 +36,10 @@ _GLOBAL_DEFAULTS: dict[str, Any] = {
     # lines (sleep-poll chains, multi-line scripts) as ≤12-word captions inside the editable
     # progress bubble. Opt-in; mechanical sleep-badge previews cover the no-model path.
     "progress_describe": False,
+    # Catio: group chats (gateway chat_type "group") post ONLY the final reply — no tool-progress
+    # bubbles, previews, interim assistant commentary or thinking; the live typing status drops to
+    # verb-only. DMs ("dm") keep their configured rendering. Off by default.
+    "quiet_group_chats": False,
 }
 
 # Tiers: HIGH = editing, personal/team use; MEDIUM = editing but customer-facing;
@@ -114,12 +118,49 @@ def _configured_display_value(user_config: dict, platform_key: str, setting: str
     return None
 
 
-def resolve_tool_progress(user_config: dict, platform_key: str, env_mode: str | None = None) -> tuple[str, bool]:
+def quiet_group_chats_enabled(user_config: dict, platform_key: str, chat_type: str | None) -> bool:
+    """Catio: whether this chat falls under the per-chat-type quiet mode.
+
+    ``display.quiet_group_chats: true`` (global or per-platform, e.g.
+    ``display.platforms.slack.quiet_group_chats``) makes a GROUP conversation — anything the
+    gateway stamps ``chat_type`` ``"group"`` (Slack channels and MPIMs, Telegram groups,
+    Discord channels) — post only the final reply. Tool progress resolves ``off`` with explicit
+    intent (bubbles, previews and the Slack native task-card lane all die;
+    :func:`resolve_tool_progress`), interim assistant messages and thinking stay out of the
+    chat, and the live typing status drops its argument preview
+    (:func:`resolve_live_status_mode`). One-to-one DMs (``chat_type`` ``"dm"``) keep their
+    configured rendering; every other chat type (CLI, webhook routes) is untouched.
+    """
+    if str(chat_type or "") != "group":
+        return False
+    return bool(resolve_display_setting(user_config, platform_key, "quiet_group_chats", False))
+
+
+def resolve_live_status_mode(user_config: dict, platform_key: str, chat_type: str = "") -> str:
+    """Catio: ``display.live_status`` with the per-chat-type quiet cap applied.
+
+    A group chat under ``display.quiet_group_chats`` never renders the argument preview:
+    ``full`` drops to ``verb`` so commands and paths stay out of shared channels. An explicit
+    ``verb`` or ``off`` resolves unchanged, in DMs as in group chats.
+    """
+    mode = resolve_display_setting(user_config, platform_key, "live_status", "full")
+    if mode == "full" and quiet_group_chats_enabled(user_config, platform_key, chat_type):
+        return "verb"
+    return mode
+
+
+def resolve_tool_progress(
+    user_config: dict, platform_key: str, env_mode: str | None = None, chat_type: str = "",
+) -> tuple[str, bool]:
     """Return (mode, explicit intent) from the same winning source.
 
     Non-None YAML wins over the legacy env bridge. Null inherits through to env,
     then tier defaults. A tier's off is not an operator request to disable cards.
+    Catio: a group chat under ``display.quiet_group_chats`` resolves ``off`` with the same
+    explicit intent as a written ``tool_progress: off`` — the native task-card lane dies too.
     """
+    if quiet_group_chats_enabled(user_config, platform_key, chat_type):
+        return "off", True
     configured = _configured_display_value(user_config, platform_key, "tool_progress")
     if configured is not None:
         return _normalise("tool_progress", configured), True
@@ -200,6 +241,7 @@ _NORMALISERS: dict[str, Any] = {
     "reasoning_style": _norm_choice(("code", "blockquote", "subtext")),
     "tool_preview_length": _norm_int,
     "progress_describe": _norm_bool,
+    "quiet_group_chats": _norm_bool,
 }
 
 

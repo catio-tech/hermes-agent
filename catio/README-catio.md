@@ -1,10 +1,10 @@
 # catio-custom — the Catio fork branch
 
-`catio-custom` = upstream pin `f974134f36` + the four open-PR replays
+`catio-custom` = upstream pin `6bb377a51d` + the five open-PR replays
 (#1 clarify numbered options, #3 terminal previews, #4 progress captions,
-#5 branch-from-message-link) + the catio local layer (droplet working-tree
-remainder, committed 2026-10-30). PR branches are inputs only — never
-merged/rebased/pushed; their content is cherry-picked here.
+#5 branch-from-message-link, #6 quiet group chats) + the catio local layer
+(droplet working-tree remainder, committed 2026-10-30). PR branches are
+inputs only — never merged/rebased/pushed; their content is cherry-picked here.
 
 ## Updating a host on this fork
 
