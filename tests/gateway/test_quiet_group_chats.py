@@ -110,12 +110,12 @@ def test_quiet_group_chat_posts_only_the_final_reply(monkeypatch, tmp_path):
     _display_settings(monkeypatch, tmp_path, _QUIET_CONFIG)
     runner = _make_runner(QuietModeCaptureAdapter())
     disp = runner._run_agent_display_settings(_source("group", "C1"))
-    # every mid-turn surface is off; the typing status keeps its verb, drops the argument preview
+    # every mid-turn surface is off; the typing status keeps its static turn-start text
     assert disp.progress_mode == "off"
     assert disp.tool_progress_enabled is False
     assert disp.interim_assistant_messages_enabled is False
     assert disp._thinking_enabled is False
-    assert disp._live_status_mode == "verb"
+    assert disp._live_status_mode == "off"
     assert disp.needs_progress_queue is False
 
 

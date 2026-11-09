@@ -2499,7 +2499,7 @@ Platforms without an override fall back to the global `tool_progress` value. Val
 
 ### Per-chat-type quiet mode (verbose DMs, quiet shared channels)
 
-`display.quiet_group_chats: true` (default `false`) makes **group** conversations — anything the gateway stamps `chat_type: group`: Slack channels and group DMs/MPIMs, Telegram groups, Discord channels — post **only the final reply**. Tool-progress bubbles, previews and native task cards, interim assistant messages and thinking progress all stay out of the chat, and the Slack typing status drops its argument preview (verb only, so commands and paths stay out of shared channels). One-to-one DMs (`chat_type: dm`) keep whatever `tool_progress` / `interim_assistant_messages` render — nothing changes for them. Like every display setting it also scopes per platform:
+`display.quiet_group_chats: true` (default `false`) makes **group** conversations — anything the gateway stamps `chat_type: group`: Slack channels and group DMs/MPIMs, Telegram groups, Discord channels — post **only the final reply**. Tool-progress bubbles, previews and native task cards, interim assistant messages and thinking progress all stay out of the chat, and the Slack live per-tool status goes off, so the turn-start assistant status keeps its static text (`platforms.slack.typing_status_text`, else the default "thinking…" / "still working… (elapsed)"). One-to-one DMs (`chat_type: dm`) keep whatever `tool_progress` / `interim_assistant_messages` render — nothing changes for them. Like every display setting it also scopes per platform:
 
 ```yaml
 display:
