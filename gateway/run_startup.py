@@ -827,7 +827,7 @@ class GatewayStartupMixin:
             strip_trailing_silence_marker,
         )
         from gateway.run import _sanitize_gateway_final_response
-        from gateway.run_turn import _unexpected_silence_reply
+        from gateway.run_turn_silence import _unexpected_silence_reply
         from gateway.warning_notifications import diagnostic_turn_muted
         from hermes_cli.timefmt import coerce_epoch
         visible = [m for m in history if m.get("role") not in ("session_meta", "system")]

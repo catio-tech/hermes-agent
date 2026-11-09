@@ -122,7 +122,7 @@ class GatewayTurnPersistenceMixin:
         # opened the chain: an internal follow-up, or a message not addressed to the bot, may go
         # silent; any other human one must not.
         from gateway.response_filters import is_machinery_display_kind, strip_trailing_silence_marker
-        from gateway.run_turn import _unexpected_silence_reply
+        from gateway.run_turn_silence import _unexpected_silence_reply
         _silence_kind = agent_result.get("queued_terminal_display_kind", persist_user_display_kind)
         _silence_reply_expected = agent_result.get("queued_terminal_reply_expected", reply_expected)
         _silence_source = agent_result.get("queued_terminal_source", source)

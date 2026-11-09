@@ -2010,6 +2010,20 @@ display:
   #   false: Only keep/send the final response
   # interim_assistant_messages: true
 
+  # Catio: per-chat-type quiet mode. When true, GROUP conversations (Slack
+  # channels and group DMs, Telegram groups, Discord channels; anything the
+  # gateway stamps chat_type "group") post ONLY the final reply: no
+  # tool-progress bubbles or previews, no native task cards, no interim
+  # assistant messages or thinking progress, and the Slack typing status
+  # drops its argument preview (verb only) so commands and paths stay out of
+  # shared channels. One-to-one DMs (chat_type "dm") keep their configured
+  # rendering. Clarify questions, approvals and busy acknowledgements still
+  # post everywhere: they need an answer, they are not narration.
+  # Per-platform override: display.platforms.slack.quiet_group_chats
+  #   true:  group chats final-reply-only
+  #   false: group chats render like DMs (default)
+  quiet_group_chats: false
+
   # Opt-in: hide automatic warning/diagnostic notifications (compression, retry
   # and fallback notices, credit/subagent failure lines, inactivity and watchdog
   # stalls, media-delivery fallbacks, cron failure alerts) on this surface.
