@@ -99,6 +99,22 @@ def _write_raw_config_leaf(config_path: Path, keys: tuple, value) -> None:
     atomic_config_write(config_path, raw)
 
 
+def _delete_raw_config_leaf(config_path: Path, keys: tuple) -> bool:
+    """Remove one leaf (same strict raw round-trip as ``_write_raw_config_leaf``); False if absent."""
+    from hermes_cli.config import read_user_config_raw
+    raw = read_user_config_raw(config_path)
+    *parents, leaf = keys
+    node = raw
+    for k in parents:
+        node = node.get(k) if isinstance(node, dict) else None
+    if not isinstance(node, dict) or leaf not in node:
+        return False
+    del node[leaf]
+    from hermes_cli.config import atomic_config_replace
+    atomic_config_replace(config_path, raw)  # the omission IS the requested deletion
+    return True
+
+
 def _preview(text: str, limit: int = 60) -> str:
     return text[:limit] + ("..." if len(text) > limit else "")
 
@@ -1004,6 +1020,72 @@ class GatewaySlashCommandsMixin(
         except Exception as e:
             logger.warning("Failed to save tool_progress mode: %s", e)
             return f"{description}\n" + t("gateway.verbose.save_failed", error=e)
+
+    async def _handle_verbosity_command(self, event: MessageEvent) -> EphemeralReply:
+        """Handle /verbosity (Slack ``!verbosity``) — the sender's display level, or the channel's
+        with ``here``. Writes ``display.user_verbosity.<user id>`` / ``display.channel_verbosity.<channel
+        id>`` in the routed profile's config.yaml; the next turn re-reads the file, so nothing in
+        memory changes. ``here`` follows the slash ACL: with admins configured only an admin may set it."""
+        from gateway.display_config import LEVELS, norm_level, resolve_verbosity
+        from gateway.run import _load_gateway_config
+        source = event.source
+        args = event.get_command_args().strip().lower().split()
+        here = "here" in args
+        args = [a for a in args if a != "here"]
+        action = args[0] if args else "status"
+        config_path, platform_key = self._display_config_target(event)
+        user_config = _load_gateway_config()
+        levels = " | ".join(LEVELS)
+        if len(args) > 1 or (action not in {"status", "reset"} and norm_level(action) is None):
+            return EphemeralReply(t("gateway.verbosity.unknown", arg=" ".join(args), levels=levels))
+        if action == "status":
+            level, layer = resolve_verbosity(user_config, platform_key, source)
+            own = self._verbosity_user_default(user_config, platform_key, str(source.user_id or ""))
+            return EphemeralReply(t("gateway.verbosity.status", level=level, layer=layer,
+                                    user_default=own or t("gateway.verbosity.not_set"), levels=levels))
+        if here:
+            from gateway.slash_access import policy_for_runner_source
+            if not policy_for_runner_source(self, source).is_admin(source.user_id):
+                return EphemeralReply(t("gateway.verbosity.here_denied"))
+            target_id = str(source.parent_chat_id or source.chat_id or "")
+            keys = (*self._verbosity_map_path(user_config, platform_key, "channel_verbosity"), target_id)
+        else:
+            uid = str(source.user_id or "")
+            if not uid:
+                return EphemeralReply(t("gateway.verbosity.no_user"))
+            keys = (*self._verbosity_map_path(user_config, platform_key, "user_verbosity"), uid)
+            entry = self._verbosity_map(user_config, platform_key, "user_verbosity").get(uid)
+            if isinstance(entry, dict):
+                keys = (*keys, "default")  # keep the user's per-channel pairs
+        scope = t("gateway.verbosity.scope_here") if here else t("gateway.verbosity.scope_you")
+        try:
+            if action == "reset":
+                await asyncio.to_thread(_delete_raw_config_leaf, config_path, keys)
+                return EphemeralReply(t("gateway.verbosity.reset", scope=scope))
+            await asyncio.to_thread(_write_raw_config_leaf, config_path, keys, action)
+        except Exception as e:
+            logger.warning("Failed to save verbosity level: %s", e)
+            return EphemeralReply(t("gateway.verbosity.save_failed", error=e))
+        return EphemeralReply(t("gateway.verbosity.set", level=action, scope=scope))
+
+    @staticmethod
+    def _verbosity_map(user_config: dict, platform_key: str, key: str) -> dict:
+        from gateway.display_config import resolve_display_setting
+        return resolve_display_setting(user_config, platform_key, key) or {}
+
+    @staticmethod
+    def _verbosity_map_path(user_config: dict, platform_key: str, key: str) -> tuple:
+        """Where a verbosity map lives: the per-platform map when one exists (it shadows the global
+        one), else ``display.<key>``."""
+        platforms = cfg_get(user_config, "display", "platforms")
+        plat = platforms.get(platform_key) if isinstance(platforms, dict) else None
+        if isinstance(plat, dict) and isinstance(plat.get(key), dict):
+            return ("display", "platforms", platform_key, key)
+        return ("display", key)
+
+    def _verbosity_user_default(self, user_config: dict, platform_key: str, uid: str) -> str | None:
+        entry = self._verbosity_map(user_config, platform_key, "user_verbosity").get(uid) if uid else None
+        return entry.get("default") if isinstance(entry, dict) else entry
 
     async def _handle_busy_command(self, event: MessageEvent) -> str | EphemeralReply:
         """Handle /busy — control what happens when messaging while Hermes is working."""

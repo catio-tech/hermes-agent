@@ -28,6 +28,7 @@ class TurnContext:
     progress_mode: str = "off"
     progress_grouping: str = "grouped"
     _progress_describe_enabled: bool = False  # aux-LLM captions for opaque terminal previews
+    progress_names_only: bool = False  # Catio verbosity medium: progress lines name the tool, never its args
     tool_progress_enabled: bool = False
     progress_queue: Any = None
     log_queue: Any = None
