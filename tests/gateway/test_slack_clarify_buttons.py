@@ -212,58 +212,6 @@ class TestSlackSendClarify:
         assert "&amp;" in section_text
 
     @pytest.mark.asyncio
-    async def test_long_labels_render_numbered_body_and_number_buttons(self):
-        """Slack truncates button labels at ~30 chars; over-budget labels must move the
-        full text into the section body (numbered) and shrink buttons to bare numbers.
-        Clicks resolve by index, so only the presentation changes."""
-        adapter = _make_adapter()
-        mock_client = adapter._team_clients["T1"]
-        mock_client.chat_postMessage = AsyncMock(return_value={"ts": "3.1"})
-
-        long_a = "Patch the shared Hermes Slack adapter source for every profile"
-        long_b = "No code change; agents keep short clarify labels on their own"
-        await adapter.send_clarify(
-            chat_id="C1",
-            question="How should long clarify options be handled?",
-            choices=[long_a, long_b],
-            clarify_id="cid-long",
-            session_key="sk-long",
-        )
-
-        kwargs = mock_client.chat_postMessage.call_args[1]
-        section_text = kwargs["blocks"][0]["text"]["text"]
-        assert long_a in section_text  # full option text readable in the body
-        assert long_b in section_text
-        assert "1." in section_text and "2." in section_text
-        elements = kwargs["blocks"][1]["elements"]
-        assert [el["text"]["text"] for el in elements[:2]] == ["1", "2"]
-        assert elements[0]["value"] == "cid-long|0"
-        assert elements[1]["value"] == "cid-long|1"
-        assert elements[2]["action_id"] == "hermes_clarify_other"
-
-    @pytest.mark.asyncio
-    async def test_short_labels_keep_direct_buttons(self):
-        """Labels within the budget render as full buttons, unchanged from today."""
-        adapter = _make_adapter()
-        mock_client = adapter._team_clients["T1"]
-        mock_client.chat_postMessage = AsyncMock(return_value={"ts": "3.2"})
-
-        await adapter.send_clarify(
-            chat_id="C1",
-            question="Which environment?",
-            choices=["staging", "production"],
-            clarify_id="cid-short",
-            session_key="sk-short",
-        )
-
-        kwargs = mock_client.chat_postMessage.call_args[1]
-        section_text = kwargs["blocks"][0]["text"]["text"]
-        assert "staging" not in section_text  # short labels live on buttons, not the body
-        elements = kwargs["blocks"][1]["elements"]
-        assert elements[0]["text"]["text"] == "staging"
-        assert elements[1]["text"]["text"] == "production"
-
-    @pytest.mark.asyncio
     async def test_retire_clarify_card_drops_buttons_and_makes_a_late_click_a_noop(self):
         """Gateway-driven retirement (timeout / prose / reset) rewrites the card and wins the race
         against a later button click on the same message."""

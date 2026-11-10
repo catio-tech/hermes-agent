@@ -1018,10 +1018,6 @@ class SlackAdapter(BasePlatformAdapter):
     _CHANNEL_TEAM_MAX = 10000
     _APPROVAL_RESOLVED_MAX = _CLARIFY_RESOLVED_MAX = _ACTIVE_STATUS_THREADS_MAX = 1000
     _CLARIFY_MESSAGE_MAX = 1000
-    # Slack truncates a button's visible label at ~30 chars (Block Kit button reference), and
-    # narrow clients clip sooner. A clarify label over this budget renders the prompt in
-    # numbered mode instead: full text in the section body, number-only buttons.
-    _CLARIFY_BUTTON_LABEL_MAX = 24
     # Tighter cap than the approval/clarify dicts: each entry holds the
     # full provider list, and a picker is only live for minutes.
     _MODEL_PICKER_STATE_MAX = 100
