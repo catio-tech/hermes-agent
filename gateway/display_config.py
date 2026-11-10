@@ -38,8 +38,15 @@ _GLOBAL_DEFAULTS: dict[str, Any] = {
     "progress_describe": False,
     # Catio: group chats (gateway chat_type "group") post ONLY the final reply — no tool-progress
     # bubbles, previews, interim assistant commentary or thinking; the live typing status drops to
-    # verb-only. DMs ("dm") keep their configured rendering. Off by default.
+    # verb-only. DMs ("dm") keep their configured rendering. Off by default. Also the legacy alias
+    # for ``verbosity.group: low`` (see resolve_verbosity).
     "quiet_group_chats": False,
+    # Catio verbosity levels (full|medium|low|minimal; resolve_verbosity): chat-type defaults
+    # ``{dm: full, group: low}``, ``{channel id: level}`` and ``{Slack user id: level |
+    # {default: level, channels: {channel id: level}}}``. Levels only CAP configured knobs.
+    "verbosity": None,
+    "channel_verbosity": None,
+    "user_verbosity": None,
 }
 
 # Tiers: HIGH = editing, personal/team use; MEDIUM = editing but customer-facing;
@@ -118,55 +125,132 @@ def _configured_display_value(user_config: dict, platform_key: str, setting: str
     return None
 
 
-def quiet_group_chats_enabled(user_config: dict, platform_key: str, chat_type: str | None) -> bool:
-    """Catio: whether this chat falls under the per-chat-type quiet mode.
+# Catio verbosity levels, most to least detailed. Each level CAPS the configured display knobs and
+# never raises one: ``full`` = as configured; ``medium`` = tool progress at most ``new`` rendered
+# as tool names only, no thinking, live status verb-only; ``low`` = today's quiet group chat (final
+# reply only, live status verb-only); ``minimal`` = ``low`` with the live status off too. Clarify
+# cards, approvals, dead-delegation notices and the final reply post at every level.
+LEVELS: tuple[str, ...] = ("full", "medium", "low", "minimal")
+_LEVEL_RANK = {level: rank for rank, level in enumerate(LEVELS)}
+_QUIET_LEVELS = frozenset({"low", "minimal"})
 
-    ``display.quiet_group_chats: true`` (global or per-platform, e.g.
-    ``display.platforms.slack.quiet_group_chats``) makes a GROUP conversation — anything the
-    gateway stamps ``chat_type`` ``"group"`` (Slack channels and MPIMs, Telegram groups,
-    Discord channels) — post only the final reply. Tool progress resolves ``off`` with explicit
-    intent (bubbles, previews and the Slack native task-card lane all die;
-    :func:`resolve_tool_progress`), interim assistant messages and thinking stay out of the
-    chat, and the live typing status drops its argument preview
-    (:func:`resolve_live_status_mode`). One-to-one DMs (``chat_type`` ``"dm"``) keep their
-    configured rendering; every other chat type (CLI, webhook routes) is untouched.
+
+def quieter(a: str, b: str) -> str:
+    """The less detailed of two levels."""
+    return a if _LEVEL_RANK[a] >= _LEVEL_RANK[b] else b
+
+
+def _source_keys(source: Any) -> list[str]:
+    """Channel ids a per-channel setting may be keyed by: chat, thread, then parent channel (the
+    ``channel_overrides`` lookup order)."""
+    keys = []
+    for attr in ("chat_id", "thread_id", "parent_chat_id"):
+        value = str(getattr(source, attr, "") or "")
+        if value and value not in keys:
+            keys.append(value)
+    return keys
+
+
+def _first_level(mapping: dict, keys: list[str]) -> str | None:
+    return next((mapping[k] for k in keys if k in mapping), None)
+
+
+def _user_layer(users: dict, user_id: str, keys: list[str]) -> tuple[str, str] | None:
+    """The sender's own setting: a user x channel pair, else the user's default."""
+    entry = users.get(user_id) if user_id else None
+    if entry is None:
+        return None
+    if isinstance(entry, str):
+        return entry, "user"
+    pair = _first_level(entry.get("channels") or {}, keys)
+    if pair is not None:
+        return pair, "user+channel"
+    default = entry.get("default")
+    return (default, "user") if default is not None else None
+
+
+def _non_user_layer(user_config: dict, platform_key: str, chat_type: str, keys: list[str]) -> tuple[str, str]:
+    """Channel setting, else chat-type default, else the ``quiet_group_chats`` alias, else full."""
+    channel = _first_level(resolve_display_setting(user_config, platform_key, "channel_verbosity") or {}, keys)
+    if channel is not None:
+        return channel, "channel"
+    by_type = (resolve_display_setting(user_config, platform_key, "verbosity") or {}).get(chat_type)
+    if by_type is not None:
+        return by_type, "chat-type"
+    if chat_type == "group" and resolve_display_setting(user_config, platform_key, "quiet_group_chats", False):
+        return "low", "quiet_group_chats"
+    return "full", "default"
+
+
+def resolve_verbosity(user_config: dict, platform_key: str, source: Any) -> tuple[str, str]:
+    """Catio: the turn's verbosity level and the layer it came from (``user+channel``, ``channel``,
+    ``user``, ``chat-type``, ``quiet_group_chats`` or ``default``).
+
+    DMs and other non-group chats take the first match of: user x channel pair → channel →
+    the sender's default → chat-type default → full. A GROUP chat never lets a user-originated
+    layer go above the non-user floor (channel → chat-type → alias → full), so one person's
+    ``full`` cannot flood a shared channel: the result is the quieter of the two. An explicit
+    channel setting raises the floor for everyone. The user is the turn sender (``source.user_id``,
+    a bare Slack user id). Every map also scopes per platform (``display.platforms.<p>.*``).
+
+    ``display.quiet_group_chats: true`` is the legacy alias for ``verbosity.group: low``. It covers
+    what the gateway stamps ``chat_type`` ``"group"`` (Slack channels, Telegram groups, Discord
+    channels); Slack MPIMs (group DMs) are stamped ``"dm"`` and keep DM rendering.
     """
-    if str(chat_type or "") != "group":
-        return False
-    return bool(resolve_display_setting(user_config, platform_key, "quiet_group_chats", False))
+    chat_type = str(getattr(source, "chat_type", "") or "")
+    keys = _source_keys(source)
+    users = resolve_display_setting(user_config, platform_key, "user_verbosity") or {}
+    user = _user_layer(users, str(getattr(source, "user_id", "") or ""), keys)
+    floor = _non_user_layer(user_config, platform_key, chat_type, keys)
+    if chat_type == "group":
+        if user is None:
+            return floor
+        return user if quieter(user[0], floor[0]) == user[0] else floor
+    if user is not None and user[1] == "user+channel":
+        return user
+    if floor[1] == "channel" or user is None:
+        return floor
+    return user
 
 
-def resolve_live_status_mode(user_config: dict, platform_key: str, chat_type: str = "") -> str:
-    """Catio: ``display.live_status`` with the per-chat-type quiet cap applied.
+def resolve_live_status_mode(user_config: dict, platform_key: str, level: str = "full") -> str:
+    """Catio: ``display.live_status`` capped by the verbosity *level*.
 
-    A group chat under ``display.quiet_group_chats`` never renders the argument preview:
-    ``full`` drops to ``verb`` so commands and paths stay out of shared channels. An explicit
-    ``verb`` or ``off`` resolves unchanged, in DMs as in group chats.
+    ``medium``/``low`` never render the argument preview (``full`` drops to ``verb``, keeping
+    commands and paths out of shared channels); ``minimal`` turns the status text off. An explicit
+    ``verb`` or ``off`` is never raised.
     """
     mode = resolve_display_setting(user_config, platform_key, "live_status", "full")
-    if mode == "full" and quiet_group_chats_enabled(user_config, platform_key, chat_type):
+    if level == "minimal":
+        return "off"
+    if mode == "full" and level != "full":
         return "verb"
     return mode
 
 
 def resolve_tool_progress(
-    user_config: dict, platform_key: str, env_mode: str | None = None, chat_type: str = "",
+    user_config: dict, platform_key: str, env_mode: str | None = None, level: str = "full",
 ) -> tuple[str, bool]:
     """Return (mode, explicit intent) from the same winning source.
 
     Non-None YAML wins over the legacy env bridge. Null inherits through to env,
     then tier defaults. A tier's off is not an operator request to disable cards.
-    Catio: a group chat under ``display.quiet_group_chats`` resolves ``off`` with the same
-    explicit intent as a written ``tool_progress: off`` — the native task-card lane dies too.
+    Catio: verbosity ``low``/``minimal`` resolves ``off`` with the same explicit intent as a
+    written ``tool_progress: off`` (the native task-card lane dies too); ``medium`` caps
+    ``all``/``verbose`` to ``new`` and keeps the winning source's intent.
     """
-    if quiet_group_chats_enabled(user_config, platform_key, chat_type):
+    if level in _QUIET_LEVELS:
         return "off", True
     configured = _configured_display_value(user_config, platform_key, "tool_progress")
     if configured is not None:
-        return _normalise("tool_progress", configured), True
-    if env_mode:
-        return _normalise("tool_progress", env_mode), True
-    return resolve_display_setting(user_config, platform_key, "tool_progress"), False
+        mode, explicit = _normalise("tool_progress", configured), True
+    elif env_mode:
+        mode, explicit = _normalise("tool_progress", env_mode), True
+    else:
+        mode, explicit = resolve_display_setting(user_config, platform_key, "tool_progress"), False
+    if level == "medium" and mode in {"all", "verbose"}:
+        mode = "new"
+    return mode, explicit
 
 
 # --- Normalisation of YAML quirks (bare ``off`` → False in YAML 1.1, etc.) ---
@@ -218,6 +302,34 @@ def _norm_choice(choices: tuple[str, ...]) -> Any:
     return norm
 
 
+def norm_level(value: Any) -> str | None:
+    """A verbosity level, or None for anything that is not one."""
+    val = str(value).strip().lower() if value is not None else ""
+    return val if val in _LEVEL_RANK else None
+
+
+def _norm_level_map(value: Any) -> dict[str, str]:
+    """``{key: level}`` with keys stringified and non-level values dropped."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(k): lvl for k, v in value.items() if (lvl := norm_level(v)) is not None}
+
+
+def _norm_user_verbosity(value: Any) -> dict[str, Any]:
+    """``{user id: level | {default: level, channels: {channel id: level}}}``, invalid parts dropped."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for uid, entry in value.items():
+        if isinstance(entry, dict):
+            norm = {"default": norm_level(entry.get("default")), "channels": _norm_level_map(entry.get("channels"))}
+            if norm["default"] is not None or norm["channels"]:
+                out[str(uid)] = norm
+        elif (lvl := norm_level(entry)) is not None:
+            out[str(uid)] = lvl
+    return out
+
+
 def _norm_int(value: Any) -> int:
     try:
         return int(value)
@@ -242,6 +354,9 @@ _NORMALISERS: dict[str, Any] = {
     "tool_preview_length": _norm_int,
     "progress_describe": _norm_bool,
     "quiet_group_chats": _norm_bool,
+    "verbosity": _norm_level_map,
+    "channel_verbosity": _norm_level_map,
+    "user_verbosity": _norm_user_verbosity,
 }
 
 

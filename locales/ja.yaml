@@ -570,6 +570,17 @@ gateway:
     reset_wrong_provider: "バンクされた使用制限リセットは openai-codex プロバイダーでのみ利用できます。まず `/model` で切り替えてください。"
   credits:
     not_logged_in: "Nous Portal にログインしていません。ログインすると残高の確認とチャージができます。"
+  verbosity:
+    status: "Verbosity here: **{level}** (from: {layer}). Your default: {user_default}.\nLevels: {levels}. `!verbosity <level>` sets yours; add `here` for this channel; `reset` clears it. Clarify questions, approvals and the final reply always post."
+    not_set: "not set"
+    set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
+    reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    scope_you: "you"
+    scope_here: "this channel"
+    unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."
+    here_denied: "Only a gateway admin can set the verbosity for this channel."
+    no_user: "Cannot tell who sent this, so there is no personal verbosity to set. Try `here`."
+    save_failed: "Could not save the verbosity setting: {error}"
   verbose:
     not_enabled: "`/verbose` コマンドはメッセージングプラットフォームで有効になっていません。\n\n`config.yaml` で有効にしてください:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
     mode_off: "⚙️ ツール進捗: **OFF** — ツールの動作は表示されません。"
@@ -1625,6 +1636,8 @@ slash:
     description: "メッセージと /history の [HH:MM] タイムスタンプを切り替え"
   diff:
     description: "作業ディレクトリの git 変更を表示"
+  verbosity:
+    description: "Set how much progress Hermes shows you here: full, medium, low or minimal"
   verbose:
     description: "ツール進行表示を切り替え: off -> new -> all -> verbose"
   focus:

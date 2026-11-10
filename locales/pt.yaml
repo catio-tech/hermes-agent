@@ -570,6 +570,17 @@ gateway:
     reset_wrong_provider: "Os resets de limite acumulados só estão disponíveis no provedor openai-codex. Troque primeiro com `/model`."
   credits:
     not_logged_in: "Você não está conectado ao Nous Portal. Faça login para ver seu saldo de créditos e recarregar."
+  verbosity:
+    status: "Verbosity here: **{level}** (from: {layer}). Your default: {user_default}.\nLevels: {levels}. `!verbosity <level>` sets yours; add `here` for this channel; `reset` clears it. Clarify questions, approvals and the final reply always post."
+    not_set: "not set"
+    set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
+    reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    scope_you: "you"
+    scope_here: "this channel"
+    unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."
+    here_denied: "Only a gateway admin can set the verbosity for this channel."
+    no_user: "Cannot tell who sent this, so there is no personal verbosity to set. Try `here`."
+    save_failed: "Could not save the verbosity setting: {error}"
   verbose:
     not_enabled: "O comando `/verbose` não está ativado para plataformas de mensagens.\n\nAtiva-o em `config.yaml`:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
     mode_off: "⚙️ Progresso de ferramentas: **OFF** — não é mostrada qualquer atividade de ferramentas."
@@ -1625,6 +1636,8 @@ slash:
     description: "Alternar carimbos de hora [HH:MM] nas mensagens e no /history"
   diff:
     description: "Mostrar alterações do git no diretório de trabalho"
+  verbosity:
+    description: "Set how much progress Hermes shows you here: full, medium, low or minimal"
   verbose:
     description: "Alternar a exibição do progresso das ferramentas: off -> new -> all -> verbose"
   focus:

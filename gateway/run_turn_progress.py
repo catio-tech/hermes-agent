@@ -341,6 +341,12 @@ class GatewayTurnProgressMixin:
         ctx = self._ctx
         from agent.display import get_tool_emoji
         emoji = get_tool_emoji(tool_name, default="⚙️")
+        if ctx.progress_names_only:
+            # Catio verbosity medium: progress without raw commands, paths or arguments.
+            from agent.display import get_tool_verb
+            ctx.last_was_terminal_block[0] = False
+            verb = get_tool_verb(tool_name)
+            return f"{emoji} {verb}" if verb else t("gateway.progress.tool_pending", emoji=emoji, tool=tool_name)
         try:
             adapter = self._runner._delivery_adapter_for(ctx.source)
         except Exception:

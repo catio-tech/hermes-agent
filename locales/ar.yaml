@@ -570,6 +570,17 @@ gateway:
     reset_wrong_provider: "إعادة تعيين الاستخدام المُدّخر متاحة فقط على مزوّد openai-codex. بدّل عبر `/model` أولًا."
   credits:
     not_logged_in: "لم تُسجّل الدخول إلى Nous Portal. سجّل الدخول لرؤية رصيد أرصدتك وإعادة الشحن."
+  verbosity:
+    status: "Verbosity here: **{level}** (from: {layer}). Your default: {user_default}.\nLevels: {levels}. `!verbosity <level>` sets yours; add `here` for this channel; `reset` clears it. Clarify questions, approvals and the final reply always post."
+    not_set: "not set"
+    set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
+    reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    scope_you: "you"
+    scope_here: "this channel"
+    unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."
+    here_denied: "Only a gateway admin can set the verbosity for this channel."
+    no_user: "Cannot tell who sent this, so there is no personal verbosity to set. Try `here`."
+    save_failed: "Could not save the verbosity setting: {error}"
   verbose:
     not_enabled: "الأمر `/verbose` غير مُفعّل لمنصّات المراسلة.\n\nفعّله في `config.yaml`:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
     mode_off: "⚙️ تقدّم الأدوات: **مُعطّل** — لا يُعرض نشاط الأدوات."
@@ -1625,6 +1636,8 @@ slash:
     description: "تبديل الطوابع الزمنية [HH:MM] على الرسائل و/history"
   diff:
     description: "عرض تغييرات git في مجلد العمل"
+  verbosity:
+    description: "Set how much progress Hermes shows you here: full, medium, low or minimal"
   verbose:
     description: "تدوير عرض تقدّم الأدوات: off -> new -> all -> verbose"
   focus:

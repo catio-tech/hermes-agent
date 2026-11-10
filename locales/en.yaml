@@ -574,6 +574,17 @@ gateway:
     reset_wrong_provider: "Banked usage resets are only available on the openai-codex provider. Switch with `/model` first."
   credits:
     not_logged_in: "Not logged into Nous Portal. Log in to see your credit balance and top up."
+  verbosity:
+    status: "Verbosity here: **{level}** (from: {layer}). Your default: {user_default}.\nLevels: {levels}. `!verbosity <level>` sets yours; add `here` for this channel; `reset` clears it. Clarify questions, approvals and the final reply always post."
+    not_set: "not set"
+    set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
+    reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    scope_you: "you"
+    scope_here: "this channel"
+    unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."
+    here_denied: "Only a gateway admin can set the verbosity for this channel."
+    no_user: "Cannot tell who sent this, so there is no personal verbosity to set. Try `here`."
+    save_failed: "Could not save the verbosity setting: {error}"
   verbose:
     not_enabled: "The `/verbose` command is not enabled for messaging platforms.\n\nEnable it in `config.yaml`:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
     mode_off: "⚙️ Tool progress: **OFF** — no tool activity shown."
@@ -1696,6 +1707,8 @@ slash:
     description: "Toggle [HH:MM] timestamps on messages and /history"
   diff:
     description: "Show git changes in the working directory"
+  verbosity:
+    description: "Set how much progress Hermes shows you here: full, medium, low or minimal"
   verbose:
     description: "Cycle tool progress display: off -> new -> all -> verbose"
   focus:

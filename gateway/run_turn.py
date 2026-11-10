@@ -850,7 +850,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
             _platform_config_key,
         )
         from agent.secret_scope import get_secret
-        from gateway.display_config import quiet_group_chats_enabled, resolve_display_setting, resolve_live_status_mode, resolve_tool_progress
+        from gateway.display_config import resolve_display_setting, resolve_live_status_mode, resolve_tool_progress, resolve_verbosity
         from gateway.status_phrases import choose_status_phrase, resolve_status_phrase_catalog
         from gateway.session_policy import policy_for_source, policy_turn_toolsets
         policy = policy_for_source(self, source)
@@ -874,17 +874,19 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         # Resolve the mode and its provenance together: null inherits, tier off is not intent.
         # A raw os.getenv here reads whichever profile's env loaded last under multiplexing
         # (#116898); get_secret resolves through the active profile's scope instead.
+        # Catio: per-user / per-channel verbosity level; it caps the knobs below (display_config.py).
+        verbosity_level, _ = resolve_verbosity(user_config, platform_key, source)
+        _final_reply_only = verbosity_level in {"low", "minimal"}
+        progress_names_only = verbosity_level == "medium"
         progress_mode, _tool_progress_explicit = resolve_tool_progress(
-            user_config, platform_key, get_secret("HERMES_TOOL_PROGRESS_MODE"), chat_type=getattr(source, "chat_type", ""),
+            user_config, platform_key, get_secret("HERMES_TOOL_PROGRESS_MODE"), level=verbosity_level,
         )
-        # Catio: quiet-group-chats mode — group chats post only the final reply (policy in display_config.py).
-        _quiet_group = quiet_group_chats_enabled(user_config, platform_key, getattr(source, "chat_type", ""))
         # "accumulate" (edit one bubble) or "separate" (one msg per tool)
         progress_grouping = resolve_display_setting(user_config, platform_key, "tool_progress_grouping") or "accumulate"
         # LLM describe layer for terminal previews (aux task "progress_describe")
         _progress_describe_enabled = bool(
             resolve_display_setting(user_config, platform_key, "progress_describe", False)
-        ) and progress_mode not in {"off", "log"}
+        ) and progress_mode not in {"off", "log"} and not progress_names_only  # no command to caption
         _generic_status_recent: list[str] = []
         _generic_status_catalog = resolve_status_phrase_catalog(user_config, platform_key)
 
@@ -922,7 +924,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         is_webhook, bot_peer = source.platform == Platform.WEBHOOK, not automatic_notices_allowed(source)
         tool_progress_enabled = progress_mode not in {"off", "log"} and not is_webhook and not bot_peer
         # Live status for text-rendering typing indicators (Slack); independent of tool_progress.
-        _live_status_mode = resolve_live_status_mode(user_config, platform_key, getattr(source, "chat_type", ""))
+        _live_status_mode = resolve_live_status_mode(user_config, platform_key, verbosity_level)
         _live_status_adapter = (
             adapter if getattr(adapter, "supports_status_text", False) and _live_status_mode != "off" else None
         )
@@ -933,10 +935,10 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         interim_assistant_messages_mode = _display_surface_mode(
             "interim_assistant_messages", default=True, require_platform_override_for={Platform.MATTERMOST},
         )
-        interim_assistant_messages_enabled = not is_webhook and not bot_peer and interim_assistant_messages_mode != "off" and not _quiet_group
+        interim_assistant_messages_enabled = not is_webhook and not bot_peer and interim_assistant_messages_mode != "off" and not _final_reply_only
         _thinking_enabled = _display_surface_mode(
             "thinking_progress", default=False, require_platform_override_for={Platform.MATTERMOST},
-        ) != "off" and not bot_peer and not _quiet_group
+        ) != "off" and not bot_peer and verbosity_level == "full"
         # Slack-native task cards need the progress queue even with text tool_progress off.
         # Slack-native task cards (#29483): when the Slack adapter's opt-in is set, tool progress renders as
         # native plan/task cards via chat.startStream — the progress queue is needed even though Slack keeps
@@ -960,7 +962,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
             user_config=user_config, platform_key=platform_key, enabled_toolsets=enabled_toolsets,
             disabled_toolsets=disabled_toolsets, resolve_display_setting=resolve_display_setting,
             progress_mode=progress_mode, progress_grouping=progress_grouping,
-            _progress_describe_enabled=_progress_describe_enabled,
+            _progress_describe_enabled=_progress_describe_enabled, progress_names_only=progress_names_only,
             _display_surface_mode=_display_surface_mode,
             tool_progress_enabled=tool_progress_enabled, _live_status_mode=_live_status_mode,
             _live_status_adapter=_live_status_adapter, log_mode_enabled=log_mode_enabled,
@@ -978,6 +980,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         "resolve_display_setting",
         "user_config", "enabled_toolsets", "disabled_toolsets", "log_mode_enabled",
         "interim_assistant_messages_enabled", "needs_progress_queue", "_native_slack_task_cards",
+        "progress_names_only",
     )
 
     def _run_agent_build_turn_context(

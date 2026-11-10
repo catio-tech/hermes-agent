@@ -570,6 +570,17 @@ gateway:
     reset_wrong_provider: "存储的用量重置仅在 openai-codex 提供商上可用。请先使用 `/model` 切换。"
   credits:
     not_logged_in: "未登录 Nous Portal。登录后即可查看额度余额并充值。"
+  verbosity:
+    status: "Verbosity here: **{level}** (from: {layer}). Your default: {user_default}.\nLevels: {levels}. `!verbosity <level>` sets yours; add `here` for this channel; `reset` clears it. Clarify questions, approvals and the final reply always post."
+    not_set: "not set"
+    set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
+    reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    scope_you: "you"
+    scope_here: "this channel"
+    unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."
+    here_denied: "Only a gateway admin can set the verbosity for this channel."
+    no_user: "Cannot tell who sent this, so there is no personal verbosity to set. Try `here`."
+    save_failed: "Could not save the verbosity setting: {error}"
   verbose:
     not_enabled: "`/verbose` 命令未在消息平台启用。\n\n请在 `config.yaml` 中启用：\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
     mode_off: "⚙️ 工具进度：**OFF** — 不显示任何工具活动。"
@@ -1625,6 +1636,8 @@ slash:
     description: "开关消息和 /history 中的 [HH:MM] 时间戳"
   diff:
     description: "显示工作目录中的 git 变更"
+  verbosity:
+    description: "Set how much progress Hermes shows you here: full, medium, low or minimal"
   verbose:
     description: "循环切换工具进度显示：off -> new -> all -> verbose"
   focus:

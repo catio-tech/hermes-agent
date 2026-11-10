@@ -4210,6 +4210,7 @@ class GatewayRunner(
         progress_mode: Any = None
         progress_grouping: Any = None
         _progress_describe_enabled: Any = None
+        progress_names_only: bool = False  # Catio verbosity medium: tool names, no commands
         _display_surface_mode: Any = None
         tool_progress_enabled: Any = None
         _live_status_mode: Any = None
