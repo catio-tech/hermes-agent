@@ -2011,7 +2011,20 @@ display:
   # Per-platform override: display.platforms.slack.quiet_group_chats
   #   true:  group chats final-reply-only
   #   false: group chats render like DMs (default)
+  # Slack group DMs (MPIMs) count as DMs, not group chats. This flag is the
+  # legacy alias for verbosity.group: low (see below).
   quiet_group_chats: false
+
+  # Verbosity levels (gateway): full | medium | low | minimal. A level CAPS the
+  # display settings above and never raises them. medium = tool names only (no
+  # commands), no thinking, verb-only typing status; low = final reply only;
+  # minimal = low plus typing status off. Clarify, approvals and the final reply
+  # always post. In group chats a user's own level can only be quieter than the
+  # channel floor (channel_verbosity, else verbosity.group, else
+  # quiet_group_chats). Users set theirs with /verbosity (!verbosity on Slack).
+  # verbosity: {dm: full, group: low}
+  # channel_verbosity: {C0123ABC: medium}
+  # user_verbosity: {U0456DEF: full, U0789GHI: {default: medium, channels: {C0123ABC: low}}}
 
   # Opt-in: hide automatic warning/diagnostic notifications (compression, retry
   # and fallback notices, credit/subagent failure lines, inactivity and watchdog

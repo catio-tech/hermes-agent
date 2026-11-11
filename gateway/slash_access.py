@@ -15,8 +15,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, FrozenSet, Iterable, Optional
 
 # Read-only floor every allowed user keeps under gating, so a non-admin can still discover what
-# they can do. ``user_allowed_commands`` only adds to this set, never restricts it.
-_ALWAYS_ALLOWED_FOR_USERS: frozenset[str] = frozenset({"help", "whoami"})
+# they can do. ``user_allowed_commands`` only adds to this set, never restricts it. ``verbosity``
+# only sets the sender's own display level; its ``here`` (channel) form keeps its own admin check.
+_ALWAYS_ALLOWED_FOR_USERS: frozenset[str] = frozenset({"help", "whoami", "verbosity"})
 
 _DM_CHAT_TYPES = frozenset({"dm", "direct", "private", ""})
 

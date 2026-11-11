@@ -124,6 +124,7 @@
   "/usage": null,
   "/v": null,
   "/verbose": "terminal",
+  "/verbosity": null,
   "/version": null,
   "/voice": "composer-voice",
   "/wake": null,

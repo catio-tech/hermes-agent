@@ -2883,13 +2883,6 @@ def _resolve_gateway_model(config: dict | None = None) -> str:
     return (model_cfg if isinstance(model_cfg, str) else "") or trial_model()
 
 
-def _channel_override_lookup_keys(
-    chat_id: str, *, thread_id: Optional[str] = None, parent_id: Optional[str] = None) -> list[str]:
-    """Ordered, de-duplicated ``channel_overrides`` lookup keys (matches ``resolve_channel_prompt``:
-    exact id first, then parent — Discord threads inherit parent overrides)."""
-    return list(dict.fromkeys(str(key) for key in (chat_id, thread_id, parent_id) if key))
-
-
 def _get_channel_override(
     config: GatewayConfig, platform: Platform, chat_id: str, *, thread_id: Optional[str] = None,
     parent_id: Optional[str] = None) -> Optional[ChannelOverride]:
@@ -2901,7 +2894,8 @@ def _get_channel_override(
     if not platform_config or not platform_config.channel_overrides:
         return None
     overrides = platform_config.channel_overrides
-    for key in _channel_override_lookup_keys(chat_id, thread_id=thread_id, parent_id=parent_id):
+    from gateway.display_config import channel_lookup_keys
+    for key in channel_lookup_keys(chat_id, thread_id=thread_id, parent_id=parent_id):
         ov = overrides.get(key)
         if ov is not None:
             return ov
@@ -4210,6 +4204,7 @@ class GatewayRunner(
         progress_mode: Any = None
         progress_grouping: Any = None
         _progress_describe_enabled: Any = None
+        progress_names_only: bool = False  # Catio verbosity medium: tool names, no commands
         _display_surface_mode: Any = None
         tool_progress_enabled: Any = None
         _live_status_mode: Any = None

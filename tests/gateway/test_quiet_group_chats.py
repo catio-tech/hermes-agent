@@ -1,7 +1,8 @@
 """Catio: per-chat-type quiet mode — ``display.quiet_group_chats``.
 
-A group chat (gateway ``chat_type`` ``"group"`` — Slack channels/MPIMs, Telegram
-groups) posts ONLY the final reply when ``display.quiet_group_chats`` is on:
+A group chat (gateway ``chat_type`` ``"group"`` — Slack channels, Telegram groups;
+Slack MPIMs are stamped ``"dm"`` and keep DM rendering) posts ONLY the final reply
+when ``display.quiet_group_chats`` is on:
 tool progress (bubbles, previews, native task cards), interim assistant
 messages and thinking progress go quiet, and the live typing status drops its
 argument preview. One-to-one DMs (``chat_type`` ``"dm"``) resolve identically to
@@ -77,8 +78,14 @@ def _display_settings(monkeypatch, tmp_path, config_yaml: str):
     monkeypatch.delenv("HERMES_TOOL_PROGRESS_MODE", raising=False)
 
 
-def _source(chat_type: str, chat_id: str, platform: Platform = Platform.SLACK) -> SessionSource:
-    return SessionSource(platform=platform, chat_id=chat_id, chat_type=chat_type, thread_id=None)
+def _source(
+    chat_type: str, chat_id: str, platform: Platform = Platform.SLACK, user_id: str | None = None,
+    thread_id: str | None = None, parent_chat_id: str | None = None,
+) -> SessionSource:
+    return SessionSource(
+        platform=platform, chat_id=chat_id, chat_type=chat_type, thread_id=thread_id,
+        user_id=user_id, parent_chat_id=parent_chat_id,
+    )
 
 
 _QUIET_CONFIG = """

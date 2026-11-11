@@ -341,6 +341,12 @@ class GatewayTurnProgressMixin:
         ctx = self._ctx
         from agent.display import get_tool_emoji
         emoji = get_tool_emoji(tool_name, default="⚙️")
+        if getattr(ctx, "progress_names_only", False):  # partial test contexts predate the field
+            # Catio verbosity medium: progress without raw commands, paths or arguments.
+            from agent.display import get_tool_verb
+            ctx.last_was_terminal_block[0] = False
+            verb = get_tool_verb(tool_name)
+            return f"{emoji} {verb}" if verb else t("gateway.progress.tool_pending", emoji=emoji, tool=tool_name)
         try:
             adapter = self._runner._delivery_adapter_for(ctx.source)
         except Exception:
@@ -1010,9 +1016,10 @@ class GatewayTurnProgressMixin:
             return
         from agent.display import build_tool_preview
         name = str(tool_name or "tool")
+        # Catio verbosity medium: the card names the tool, never its command, paths or args.
+        preview = "" if getattr(self._ctx, "progress_names_only", False) else build_tool_preview(name, args or {}, max_len=64)
         self._ctx.progress_queue.put({
-            "type": "tool.started", "tool_call_id": str(call_id or ""), "tool_name": name,
-            "preview": build_tool_preview(name, args or {}, max_len=64) or "",
+            "type": "tool.started", "tool_call_id": str(call_id or ""), "tool_name": name, "preview": preview or "",
         })
 
     def native_tool_complete_callback(self, call_id, tool_name, args, result):
