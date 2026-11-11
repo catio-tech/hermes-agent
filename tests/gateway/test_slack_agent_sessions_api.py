@@ -105,3 +105,25 @@ class TestAgentSessionsApiRouting:
             title="Summarize the incident",
         )
         a._app.client.assistant_threads_setTitle.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_enum_mapping_engages_on_real_bound_method_client(self):
+        """A real AsyncWebClient returns a fresh bound-method object on every getattr;
+        AsyncMock attributes are identity-stable and hid an identity-check regression."""
+        _slack_mod._AGENT_SESSIONS_SUPPORTED = True
+        calls = []
+
+        class _RealClient:
+            async def agents_sessions_setStatus(self, **kwargs):
+                calls.append(("agents", kwargs["status"]))
+
+            async def assistant_threads_setStatus(self, **kwargs):
+                calls.append(("legacy", kwargs["status"]))
+
+        client = _RealClient()
+        assert client.agents_sessions_setStatus is not client.agents_sessions_setStatus
+        a = self._adapter()
+        a._app.client = client
+        await a._set_thread_status("C123", "", "parent_ts", "is thinking...", "probe")
+        await a._set_thread_status("C123", "", "parent_ts", "", "probe")
+        assert calls == [("agents", "processing"), ("agents", "active")]
