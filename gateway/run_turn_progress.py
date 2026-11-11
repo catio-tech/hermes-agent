@@ -1016,9 +1016,10 @@ class GatewayTurnProgressMixin:
             return
         from agent.display import build_tool_preview
         name = str(tool_name or "tool")
+        # Catio verbosity medium: the card names the tool, never its command, paths or args.
+        preview = "" if getattr(self._ctx, "progress_names_only", False) else build_tool_preview(name, args or {}, max_len=64)
         self._ctx.progress_queue.put({
-            "type": "tool.started", "tool_call_id": str(call_id or ""), "tool_name": name,
-            "preview": build_tool_preview(name, args or {}, max_len=64) or "",
+            "type": "tool.started", "tool_call_id": str(call_id or ""), "tool_name": name, "preview": preview or "",
         })
 
     def native_tool_complete_callback(self, call_id, tool_name, args, result):

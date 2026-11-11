@@ -662,6 +662,7 @@ gateway:
     not_set: "not set"
     set: "Verbosity set to **{level}** for {scope} — takes effect on the next message."
     reset: "Verbosity setting cleared for {scope} — takes effect on the next message."
+    nothing_to_reset: "No verbosity setting to clear for {scope}."
     scope_you: "you"
     scope_here: "this channel"
     unknown: "Unknown verbosity `{arg}`. Levels: {levels} (or `reset`, `status`; add `here` for this channel)."

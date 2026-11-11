@@ -1060,7 +1060,8 @@ class GatewaySlashCommandsMixin(
         scope = t("gateway.verbosity.scope_here") if here else t("gateway.verbosity.scope_you")
         try:
             if action == "reset":
-                await asyncio.to_thread(_delete_raw_config_leaf, config_path, keys)
+                if not await asyncio.to_thread(_delete_raw_config_leaf, config_path, keys):
+                    return EphemeralReply(t("gateway.verbosity.nothing_to_reset", scope=scope))
                 logger.info("verbosity reset at %s by user %s", ".".join(keys), source.user_id)
                 return EphemeralReply(t("gateway.verbosity.reset", scope=scope))
             await asyncio.to_thread(_write_raw_config_leaf, config_path, keys, action)
