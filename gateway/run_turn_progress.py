@@ -360,7 +360,7 @@ class GatewayTurnProgressMixin:
         ctx = self._ctx
         from agent.display import get_tool_emoji
         emoji = get_tool_emoji(tool_name, default="⚙️")
-        if ctx.progress_names_only:
+        if getattr(ctx, "progress_names_only", False):  # partial test contexts predate the field
             # Catio verbosity medium: progress without raw commands, paths or arguments.
             from agent.display import get_tool_verb
             ctx.last_was_terminal_block[0] = False
