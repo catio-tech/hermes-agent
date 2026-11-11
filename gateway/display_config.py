@@ -140,15 +140,11 @@ def quieter(a: str, b: str) -> str:
     return a if _LEVEL_RANK[a] >= _LEVEL_RANK[b] else b
 
 
-def _source_keys(source: Any) -> list[str]:
-    """Channel ids a per-channel setting may be keyed by: chat, thread, then parent channel (the
-    ``channel_overrides`` lookup order)."""
-    keys = []
-    for attr in ("chat_id", "thread_id", "parent_chat_id"):
-        value = str(getattr(source, attr, "") or "")
-        if value and value not in keys:
-            keys.append(value)
-    return keys
+def channel_lookup_keys(chat_id: Any, *, thread_id: Any = None, parent_id: Any = None) -> list[str]:
+    """Ordered, de-duplicated per-channel lookup keys, shared by ``channel_overrides`` and
+    ``channel_verbosity`` (matches ``resolve_channel_prompt``: exact id first, then parent —
+    threads inherit parent settings)."""
+    return list(dict.fromkeys(str(key) for key in (chat_id, thread_id, parent_id) if key))
 
 
 def _first_level(mapping: dict, keys: list[str]) -> str | None:
@@ -198,7 +194,8 @@ def resolve_verbosity(user_config: dict, platform_key: str, source: Any) -> tupl
     channels); Slack MPIMs (group DMs) are stamped ``"dm"`` and keep DM rendering.
     """
     chat_type = str(getattr(source, "chat_type", "") or "")
-    keys = _source_keys(source)
+    keys = channel_lookup_keys(getattr(source, "chat_id", None), thread_id=getattr(source, "thread_id", None),
+                               parent_id=getattr(source, "parent_chat_id", None))
     users = resolve_display_setting(user_config, platform_key, "user_verbosity") or {}
     user = _user_layer(users, str(getattr(source, "user_id", "") or ""), keys)
     floor = _non_user_layer(user_config, platform_key, chat_type, keys)

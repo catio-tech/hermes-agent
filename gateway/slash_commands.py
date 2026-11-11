@@ -1061,11 +1061,14 @@ class GatewaySlashCommandsMixin(
         try:
             if action == "reset":
                 await asyncio.to_thread(_delete_raw_config_leaf, config_path, keys)
+                logger.info("verbosity reset at %s by user %s", ".".join(keys), source.user_id)
                 return EphemeralReply(t("gateway.verbosity.reset", scope=scope))
             await asyncio.to_thread(_write_raw_config_leaf, config_path, keys, action)
         except Exception as e:
-            logger.warning("Failed to save verbosity level: %s", e)
+            logger.warning("Failed to save verbosity %s at %s: %s", action, ".".join(keys), e, exc_info=True)
             return EphemeralReply(t("gateway.verbosity.save_failed", error=e))
+        # Audit line: a channel-wide change affects everyone there; log who made it.
+        logger.info("verbosity %s set at %s by user %s", action, ".".join(keys), source.user_id)
         return EphemeralReply(t("gateway.verbosity.set", level=action, scope=scope))
 
     @staticmethod

@@ -2309,7 +2309,7 @@ display:
   focus_view: false       # CLI focus view (/focus) — reduced output, display-only
   platforms: {}           # Per-platform display overrides (see below)
   interim_assistant_messages: true  # Gateway: send natural mid-turn assistant updates as separate messages
-  quiet_group_chats: false  # Gateway: group chats (channels/MPIMs/servers) post only the final reply; DMs keep full rendering
+  quiet_group_chats: false  # Gateway: group chats (channels/servers) post only the final reply; DMs and Slack group DMs keep full rendering (alias for verbosity.group: low)
   suppress_warning_notifications: false  # Opt-in: hide automatic warning/diagnostic notices (see messaging guide)
   show_commentary: true   # Codex models: deliver commentary-channel progress narration as visible mid-turn updates
   skin: default           # Built-in or custom CLI skin (see user-guide/features/skins)
@@ -2518,7 +2518,7 @@ Platforms without an override fall back to the global `tool_progress` value. Val
 
 ### Per-chat-type quiet mode (verbose DMs, quiet shared channels)
 
-`display.quiet_group_chats: true` (default `false`) makes **group** conversations — anything the gateway stamps `chat_type: group`: Slack channels and group DMs/MPIMs, Telegram groups, Discord channels — post **only the final reply**. Tool-progress bubbles, previews and native task cards, interim assistant messages and thinking progress all stay out of the chat, and the Slack typing status drops its argument preview (verb only, so commands and paths stay out of shared channels). One-to-one DMs (`chat_type: dm`) keep whatever `tool_progress` / `interim_assistant_messages` render — nothing changes for them. Like every display setting it also scopes per platform:
+`display.quiet_group_chats: true` (default `false`) makes **group** conversations — anything the gateway stamps `chat_type: group`: Slack channels, Telegram groups, Discord channels — post **only the final reply**. Slack group DMs (MPIMs) are stamped `chat_type: dm` and keep DM rendering. Tool-progress bubbles, previews and native task cards, interim assistant messages and thinking progress all stay out of the chat, and the Slack typing status drops its argument preview (verb only, so commands and paths stay out of shared channels). One-to-one DMs (`chat_type: dm`) keep whatever `tool_progress` / `interim_assistant_messages` render — nothing changes for them. Like every display setting it also scopes per platform:
 
 ```yaml
 display:
@@ -2531,6 +2531,36 @@ display:
 ```
 
 Set it from the CLI with `hermes config set display.quiet_group_chats true`, then restart the gateway. Clarify questions, approval prompts and busy acknowledgements still post in group chats — they are replies that need an answer, not progress narration.
+
+### Verbosity levels (per user, per channel)
+
+`quiet_group_chats` is the on/off form of four verbosity levels. A level **caps** the display settings above; it never turns on something you configured off.
+
+| Level | What a chat sees |
+|---|---|
+| `full` | Everything as configured (the default). |
+| `medium` | Tool progress at most `new`, showing **tool names only** (no commands, paths or arguments); no thinking; typing status verb-only. Interim messages as configured. |
+| `low` | Final reply only (exactly what `quiet_group_chats` does today); typing status verb-only. |
+| `minimal` | Final reply only, and the typing status text off too. Reactions are unaffected. |
+
+Clarify questions, approval prompts, failed-subagent notices and the final reply post at every level, and scheduled heartbeat turns stay quiet whatever the level.
+
+```yaml
+display:
+  quiet_group_chats: true                    # legacy alias: verbosity.group defaults to low
+  verbosity: {dm: full, group: low}          # chat-type defaults
+  channel_verbosity: {C0123ABC: medium}      # channel (or thread parent) id -> level
+  user_verbosity:                            # Slack user id -> level, or {default, channels}
+    U0456DEF: full
+    U0789GHI: {default: medium, channels: {C0123ABC: low}}
+```
+
+Every key also scopes per platform under `display.platforms.<platform>.*`. Resolution for one turn, using the **sender's** user id:
+
+- **DMs** (and other non-group chats): user × channel pair → channel setting → the user's default → chat-type default → `full`.
+- **Group chats**: the channel floor is the channel setting, else the chat-type default, else `low` when `quiet_group_chats` is on, else `full`. A user's own setting (pair or default) applies only when it is **quieter** than that floor, so one person's `full` cannot flood a shared channel. An explicit channel setting raises the floor for everyone.
+
+Users set their own level with `/verbosity <level>` (`!verbosity` on Slack), or the channel's with `/verbosity <level> here`; `reset` clears the setting. The command writes `config.yaml` and the next message picks it up with no restart. With the slash ACL's admins configured for the scope (`group_allow_admin_from`), only an admin may use `here`.
 
 Signal is listed as a valid platform key because the setting can be saved per platform, but the current Signal adapter cannot edit sent messages and does not render tool-progress bubbles. Keep Signal `tool_progress` set to `off`; use the CLI or an editing-capable messaging platform if you need to watch each tool call live.
 

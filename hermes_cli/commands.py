@@ -213,7 +213,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("verbosity", "Set how much progress Hermes shows you here: full, medium, low or minimal",
                "Configuration", args_hint="[full|medium|low|minimal|reset|status] [here]",
                subcommands=("full", "medium", "low", "minimal", "reset", "status", "here"),
-               busy_policy="dispatch"),
+               gateway_only=True, busy_policy="dispatch"),
     CommandDef("focus", "Toggle focus view — show only your prompt and the final response",
                "Configuration", cli_only=True, args_hint="[on|off|status]",
                subcommands=("on", "off", "status")),
