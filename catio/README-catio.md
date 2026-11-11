@@ -6,6 +6,16 @@
 (droplet working-tree remainder, committed 2026-10-30). PR branches are
 inputs only — never merged/rebased/pushed; their content is cherry-picked here.
 
+## Verbosity levels (fork-only)
+
+`display.quiet_group_chats` is extended into four levels (full | medium | low |
+minimal) via `display.verbosity`, `display.channel_verbosity` and
+`display.user_verbosity`, resolved per turn in `gateway/display_config.py`
+(`resolve_verbosity`), set with `!verbosity [level|reset] [here]`. The bare
+`quiet_group_chats: true` keeps its old behavior with no config change. In
+group chats a user setting never resolves above the channel floor. Slack MPIMs
+stay `dm`. Docs: website/docs/user-guide/configuration.md#verbosity-levels-per-user-per-channel.
+
 ## Updating a host on this fork
 
 Run `catio/update.sh` (fetch upstream, merge onto catio-custom, py_compile

@@ -876,8 +876,6 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         # (#116898); get_secret resolves through the active profile's scope instead.
         # Catio: per-user / per-channel verbosity level; it caps the knobs below (display_config.py).
         verbosity_level, _ = resolve_verbosity(user_config, platform_key, source)
-        _final_reply_only = verbosity_level in {"low", "minimal"}
-        progress_names_only = verbosity_level == "medium"
         progress_mode, _tool_progress_explicit = resolve_tool_progress(
             user_config, platform_key, get_secret("HERMES_TOOL_PROGRESS_MODE"), level=verbosity_level,
         )
@@ -886,7 +884,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         # LLM describe layer for terminal previews (aux task "progress_describe")
         _progress_describe_enabled = bool(
             resolve_display_setting(user_config, platform_key, "progress_describe", False)
-        ) and progress_mode not in {"off", "log"} and not progress_names_only  # no command to caption
+        ) and progress_mode not in {"off", "log"} and verbosity_level != "medium"  # names only: no command to caption
         _generic_status_recent: list[str] = []
         _generic_status_catalog = resolve_status_phrase_catalog(user_config, platform_key)
 
@@ -935,7 +933,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         interim_assistant_messages_mode = _display_surface_mode(
             "interim_assistant_messages", default=True, require_platform_override_for={Platform.MATTERMOST},
         )
-        interim_assistant_messages_enabled = not is_webhook and not bot_peer and interim_assistant_messages_mode != "off" and not _final_reply_only
+        interim_assistant_messages_enabled = not is_webhook and not bot_peer and interim_assistant_messages_mode != "off" and verbosity_level not in {"low", "minimal"}
         _thinking_enabled = _display_surface_mode(
             "thinking_progress", default=False, require_platform_override_for={Platform.MATTERMOST},
         ) != "off" and not bot_peer and verbosity_level == "full"
@@ -962,7 +960,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
             user_config=user_config, platform_key=platform_key, enabled_toolsets=enabled_toolsets,
             disabled_toolsets=disabled_toolsets, resolve_display_setting=resolve_display_setting,
             progress_mode=progress_mode, progress_grouping=progress_grouping,
-            _progress_describe_enabled=_progress_describe_enabled, progress_names_only=progress_names_only,
+            _progress_describe_enabled=_progress_describe_enabled, progress_names_only=verbosity_level == "medium",
             _display_surface_mode=_display_surface_mode,
             tool_progress_enabled=tool_progress_enabled, _live_status_mode=_live_status_mode,
             _live_status_adapter=_live_status_adapter, log_mode_enabled=log_mode_enabled,
@@ -979,8 +977,7 @@ class GatewayTurnMixin(GatewayBackgroundMixin, GatewayTurnPrepareMixin, GatewayT
         "progress_grouping", "_progress_describe_enabled", "tool_progress_enabled", "log_queue",
         "resolve_display_setting",
         "user_config", "enabled_toolsets", "disabled_toolsets", "log_mode_enabled",
-        "interim_assistant_messages_enabled", "needs_progress_queue", "_native_slack_task_cards",
-        "progress_names_only",
+        "interim_assistant_messages_enabled", "needs_progress_queue", "_native_slack_task_cards", "progress_names_only",
     )
 
     def _run_agent_build_turn_context(
