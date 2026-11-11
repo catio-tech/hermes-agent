@@ -182,6 +182,20 @@ def test_medium_progress_names_the_tool_without_its_command():
     assert "secret-path" not in line and "```" not in line
 
 
+@pytest.mark.parametrize("names_only", [True, False])
+def test_medium_native_task_card_names_the_tool_without_its_command(names_only):
+    from gateway.run_turn_runner import TurnRunner
+    ctx = TurnContext(source=_source("dm", "D1"), progress_names_only=names_only, _native_slack_task_cards=True,
+                      progress_queue=queue.Queue(), _run_still_current=lambda: True)
+    TurnRunner(SimpleNamespace(), ctx).native_tool_start_callback("call-1", "terminal", {"command": "cat /etc/secret-path"})
+    event = ctx.progress_queue.get_nowait()
+    assert event["type"] == "tool.started" and event["tool_name"] == "terminal"
+    if names_only:  # medium: the card title is the bare tool name
+        assert event["preview"] == "" and "secret-path" not in str(event)
+    else:  # control: other levels keep the configured preview
+        assert "secret-path" in event["preview"]
+
+
 # --- AC6: caps never raise -------------------------------------------------------------------------
 
 def test_levels_never_raise_configured_values(monkeypatch, tmp_path):
@@ -375,6 +389,31 @@ def test_here_follows_the_slash_acl(monkeypatch, tmp_path):
     assert "channel_verbosity" not in (_raw(tmp_path).get("display") or {})
     _command(runner, "/verbosity low here", _source("group", "C1", user_id="UADMIN"))
     assert _raw(tmp_path)["display"]["channel_verbosity"] == {"C1": "low"}
+
+
+def test_non_admin_may_set_own_level_but_not_here_under_the_acl(monkeypatch, tmp_path):
+    _display_settings(monkeypatch, tmp_path, "display: {}\n")
+    runner = _make_runner(_CardsAdapter())
+    runner.config.platforms = {Platform.SLACK: SimpleNamespace(extra={"group_allow_admin_from": ["UADMIN"]})}
+    src = _source("group", "C1", user_id="U1")
+    assert runner._check_slash_access(src, "restart") is not None  # the ACL is really on
+    assert runner._check_slash_access(src, "verbosity") is None  # dispatch lets a non-admin through
+    _command(runner, "/verbosity low", src)
+    assert _raw(tmp_path)["display"]["user_verbosity"] == {"U1": "low"}
+    reply = _command(runner, "/verbosity medium here", src)
+    assert "admin" in str(getattr(reply, "content", reply))
+    assert "channel_verbosity" not in _raw(tmp_path)["display"]
+
+
+def test_reset_with_nothing_set_says_so(monkeypatch, tmp_path):
+    _display_settings(monkeypatch, tmp_path, "display: {tool_progress: all}\n")
+    runner = _make_runner(_CardsAdapter())
+    before = (tmp_path / "config.yaml").read_text()
+    for text in ("/verbosity reset", "/verbosity reset here"):
+        out = _command(runner, text, _source("group", "C1", user_id="U1"))
+        reply = str(getattr(out, "content", out))
+        assert "No verbosity setting to clear" in reply and "cleared" not in reply
+    assert (tmp_path / "config.yaml").read_text() == before
 
 
 # --- AC10: Slack bang rewrite ----------------------------------------------------------------------
