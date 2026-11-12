@@ -8,6 +8,14 @@ from typing import Any
 from hermes_cli.process_identity import own_process_groups, release_process_groups, spawn_owned
 
 
+def survives_host_restart(session: Any) -> bool:
+    """A job that outlives a graceful gateway restart for the successor to re-adopt: its own systemd
+    scope (the unit's ``KillMode=mixed`` reaps everything left in the gateway cgroup), a log rather
+    than a pipe to the dying gateway (no SIGPIPE; the exit is recorded beside it), and a host PID."""
+    return bool(session is not None and session.systemd_unit and session.output_log and not session.exited
+                and session.pid_scope == "host" and not session.sandbox_key)
+
+
 class ProcessOwnershipMixin:
     """A local job's process group goes to the owner-death supervisor while the job's own process runs,
     so it dies with this process however this process dies (SIGKILL, OOM, crash): the agent-lifecycle
@@ -18,7 +26,32 @@ class ProcessOwnershipMixin:
     # Set by recover_from_checkpoint: this host re-adopts the jobs a crashed predecessor left
     # running, so its own jobs must outlive its crash the same way (see _owns_job).
     _jobs_outlive_host = False
+    # Set when a graceful restart begins (never by a final stop): from then on bulk sweeps and agent
+    # close spare the jobs the successor re-adopts (survives_host_restart); an explicit kill still works.
+    _restart_handoff = False
     _owned_pgid_lock = threading.Lock()
+
+    def begin_restart_handoff(self) -> None:
+        self._restart_handoff = True
+
+    def spared_by_restart(self, session_id: str) -> bool:
+        return self._restart_handoff and survives_host_restart(self._running.get(session_id))
+
+    def _sweep_targets(self, task_id: Any, exclude_ids: frozenset, source: str) -> list:
+        """The sessions a ``kill_all`` sweep stops (see its docstring for the spared ones)."""
+        from tools.environments.sandbox_scope import sandbox_visible
+        lifecycle = source in self._LIFECYCLE_KILL_SOURCES
+        if source == "gateway_restart":
+            self.begin_restart_handoff()
+        # A sweep reaches only the current activity's own processes; a hosted agent's run in its
+        # sandbox and end with it (its kill would go through that agent's scope anyway).
+        with self._lock:
+            return [
+                s for s in (*self._running.values(), *self._finished.values())
+                if (task_id is None or s.owner_task_id == task_id) and sandbox_visible(s.sandbox_key)
+                and s.id not in exclude_ids and (not s.exited or s._scope_stop_pending)
+                and not (lifecycle and s.persist_on_release) and not self.spared_by_restart(s.id)
+            ]
 
     def _owns_job(self, persist_on_release: bool) -> bool:
         """Not owned, on purpose: ``persist_on_release`` jobs, which must outlive the agent (#41225);
@@ -29,7 +62,7 @@ class ProcessOwnershipMixin:
         gateway (a standalone serve with no session authority, the slash worker, an embedder of
         AIAgent) owns its jobs, and foreground commands are owned everywhere. Also not owned: every job of a
         managed worker, a per-turn interpreter whose jobs the next turn's worker adopts with their
-        output log (worker_output_log); and Windows, where the layer-3 job object covers ownership."""
+        output log (background_output_log); and Windows, where the layer-3 job object covers ownership."""
         from agent.runtime_session_store import is_worker_process
         from tools.process_registry import _IS_WINDOWS, _is_supervised_gateway_process
 

@@ -37,7 +37,7 @@ from tools.process_registry_notifications import (
     format_process_notification, heartbeat_output_tail, is_child_process_notification, should_surface_notification)
 from tools.process_registry_checkpoint import ProcessCheckpointMixin
 from tools.process_registry_env_scope import ProcessEnvScopeMixin
-from tools.process_registry_output_log import ProcessOutputLogMixin, open_output_log, record_exit_command, worker_output_log
+from tools.process_registry_output_log import ProcessOutputLogMixin, open_output_log, record_exit_command, background_output_log
 from tools.process_registry_ownership import ProcessOwnershipMixin
 from tools.process_registry_termination import ProcessTerminationMixin
 from tools.process_registry_results import load_completed_results, save_completed_result
@@ -1196,8 +1196,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         session = self._new_session(command, task_id, owner_task_id, session_key, _resolve_safe_cwd(cwd or os.getcwd()),
                                     persist_on_release=persist_on_release)
         pty_scope_attempted = False
-        # A worker's pipe or PTY dies with the worker (the child's next write is SIGPIPE): write to a log.
-        log = worker_output_log(session.id)
+        # A pipe or PTY dies with its reader (the child's next write is SIGPIPE): a job that outlives it logs.
+        log = background_output_log(session.id, use_pty=use_pty)
         if use_pty and log is None:
             try:
                 return self._spawn_local_pty(session, safe_command, env_vars)
@@ -2522,18 +2522,10 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         timeout, or ``agent_close``): an explicitly persisted background job must survive
         session end / compression / error recovery (#41225). An explicit operator stop
         (``process.kill`` via process_manage, CLI /stop) passes its own source and still
-        reaches them, so the user can always stop a persisted process on purpose."""
-        from tools.environments.sandbox_scope import sandbox_visible
-        lifecycle = source in self._LIFECYCLE_KILL_SOURCES
-        # A sweep reaches only the current activity's own processes; a hosted agent's run in its
-        # sandbox and end with it (its kill would go through that agent's scope anyway).
-        with self._lock:
-            targets = [
-                s for s in (*self._running.values(), *self._finished.values())
-                if (task_id is None or s.owner_task_id == task_id) and sandbox_visible(s.sandbox_key)
-                and s.id not in exclude_ids and (not s.exited or s._scope_stop_pending)
-                and not (lifecycle and s.persist_on_release)
-            ]
+        reaches them, so the user can always stop a persisted process on purpose. ``gateway_restart``
+        (and every sweep after it) spares the jobs a successor gateway re-adopts (``survives_host_restart``);
+        ``gateway_shutdown``, a final stop, kills everything."""
+        targets = self._sweep_targets(task_id, exclude_ids, source)
         results = [self.kill_process(s.id, source=source, consume_output=consume_output) for s in targets]
         return sum(
             r.get("status") in {"killed", "already_exited"} and "scope_stop_failed" not in r
