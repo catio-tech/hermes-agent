@@ -1869,9 +1869,13 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
     async def _run_process_watcher(self, watcher: dict) -> None:
         """Run :meth:`_watch_process` inside the owning profile's scope, start to finish. A watcher starts
         in an empty context (live-armed from a tool thread, or recovered at startup), and the output it
-        prepares runs that profile's own ``transform_terminal_output`` hooks before any delivery."""
+        prepares runs that profile's own ``transform_terminal_output`` hooks before any delivery. A watcher
+        that returns has routed the completion for good, so its checkpointed wake is acked (in that profile's
+        scope); a cancelled one (restart mid-retry) leaves the wake for the next gateway to replay."""
+        from tools.process_registry import process_registry
         async with self._completion_event_scope(watcher):
             await self._watch_process(watcher)
+            process_registry.mark_completion_delivered(watcher["session_id"])
 
     async def _watch_process(self, watcher: dict) -> None:
         """Poll a background process and push updates until it exits. Mode

@@ -296,8 +296,10 @@ completion**, under `logs/process-results/` in the profile's Hermes home. Each
 receipt contains at most the existing rolling **200,000-character output tail**,
 with terminal secret-redaction rules always applied, even when live-output
 redaction is disabled. Receipts expire on subsequent
-result reads or writes. Recovery does not rerun commands or replay completion
-notifications. This preserves work that finished while the parent was alive;
+result reads or writes. Recovery does not rerun commands. A `notify_on_complete`
+completion the gateway had not delivered yet when it stopped or restarted is
+kept in the profile's `processes.json` and delivered once by the next gateway
+(up to 48 hours later), except for commands `hermes gateway stop` killed. This preserves work that finished while the parent was alive;
 it does not keep unfinished children alive after a timeout or crash.
 
 ### Gateway restarts
