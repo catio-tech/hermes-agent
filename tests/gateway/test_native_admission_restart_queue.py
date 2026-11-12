@@ -65,6 +65,10 @@ def _rows(authority):
 _SENT_AT = datetime(2026, 11, 12, 21, 26, tzinfo=UTC)
 
 
+def _drains_idle(authority):
+    return all(live.task is None or live.task.done() for live in authority.sessions.values())
+
+
 def _event(source, mid, text=None):
     # A platform redelivery carries the original send time, so a resend has the same payload.
     return MessageEvent(text=text or mid, source=source, message_id=mid, timestamp=_SENT_AT)
@@ -95,7 +99,8 @@ async def test_round_trip_queued_during_restart_runs_once_after_boot(monkeypatch
     _begin_restart(runner)
     await _send_settled(adapter, authority, source, 'm1', 'first saved message')
     await _send_settled(adapter, authority, source, 'm2', 'second saved message')
-    await asyncio.sleep(0.2)  # the draining owner's FIFO had its chance to (wrongly) claim them
+    # The draining owner's FIFO ran its course (it pauses on runtime_draining instead of claiming them).
+    await async_wait_until(lambda: _drains_idle(authority), what="the draining owner's FIFO exited")
     assert _rows(authority)[1:] == [('m1', 'queued'), ('m2', 'queued')]
     assert ran == [('a', 'm0')]
     # Told at once (not after an in-flight turn), once per pause episode, and never a raw error.
@@ -112,7 +117,8 @@ async def test_round_trip_queued_during_restart_runs_once_after_boot(monkeypatch
     # The platform redelivers m1 to the new owner: same message id, same request id, no third run.
     redelivered = adapter_b.build_source(chat_id='chat', chat_type='dm', user_id='fixture-user')
     await _send(adapter_b, redelivered, 'm1', 'first saved message')
-    await asyncio.sleep(0.3)
+    await async_wait_until(lambda: not adapter_b._active_sessions and _drains_idle(authority_b),
+                           what='the redelivery handled')
     assert len(ran_b) == 2 and len(adapter_b.sent) == 2  # no third run, and no error notice either
     assert [mid for mid, _status in _rows(authority_b)].count('m1') == 1
 
