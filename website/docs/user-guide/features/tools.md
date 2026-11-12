@@ -300,6 +300,18 @@ result reads or writes. Recovery does not rerun commands or replay completion
 notifications. This preserves work that finished while the parent was alive;
 it does not keep unfinished children alive after a timeout or crash.
 
+### Gateway restarts
+
+Under a systemd-supervised gateway on Linux with `systemd-run --user` available,
+a non-PTY background command runs in its own scope and writes its output to
+`logs/process-output/<session_id>.log` instead of a pipe. A graceful restart
+(`/restart`, `hermes gateway restart`, SIGUSR1) leaves such commands running,
+and the next gateway re-adopts them: `poll`/`log`/`wait` keep working and the
+completion still reaches the conversation. `hermes gateway stop` still stops
+every background command. PTY commands, sandboxed backends and commands that
+did not get a scope are stopped on restart, as before. The log grows with the
+command's output and is removed 7 days after the command exits.
+
 ## Sudo Support
 
 On an interactive parent session, supported sudo commands use the masked password prompt (cached for the session). This includes literal absolute or quoted executable paths and `env` prefixes with ordinary options and assignments, such as `env -u UNUSED /usr/bin/sudo id`. Passwordless sudo does not need a prompt. You can also configure `SUDO_PASSWORD` in your profile's `.env` file on the agent machine.

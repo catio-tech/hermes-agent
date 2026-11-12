@@ -1,4 +1,4 @@
-"""File-backed output for background processes a registered worker starts.
+"""File-backed output for background processes that outlive the interpreter that spawned them.
 
 A managed worker is a per-turn interpreter. A stdout pipe whose read end that worker's reader
 thread owns closes when the worker exits, so the child's next write raises SIGPIPE
@@ -6,6 +6,8 @@ thread owns closes when the worker exits, so the child's next write raises SIGPI
 profile-scoped log instead and its shell records the exit status beside it (the contract the
 env-backend wrapper already uses), so whichever interpreter adopts the checkpoint entry next
 (the session's next worker, the owner at startup) tails the same file and collects the exit.
+A supervised gateway's scoped pipe job gets the same contract: it outlives a graceful restart
+(``survives_host_restart``) and the successor gateway adopts it from the checkpoint.
 """
 import codecs
 from contextlib import suppress
@@ -29,10 +31,14 @@ def output_dir() -> Path:
     return get_hermes_home() / "logs" / "process-output"
 
 
-def worker_output_log(session_id: str) -> Optional[Path]:
-    """The log a worker-spawned process writes to; None outside a registered worker."""
+def background_output_log(session_id: str, *, use_pty: bool) -> Optional[Path]:
+    """The log a background process writes to instead of a pipe: every spawn of a registered
+    worker, and a supervised gateway's non-PTY spawn that gets its own systemd scope (the job
+    outlives a restart; its PTY master could not). None otherwise: the pipe/PTY readers apply."""
     from agent.runtime_session_store import is_worker_process
-    if not is_worker_process():
+    from tools.process_registry import _IS_LINUX, _is_supervised_gateway_process, _systemd_run_user_scope_available
+    if not is_worker_process() and (use_pty or not (
+            _IS_LINUX and _is_supervised_gateway_process() and _systemd_run_user_scope_available())):
         return None
     directory = output_dir()
     make_user_dir(directory, mode=0o700, parents=True, exist_ok=True)
