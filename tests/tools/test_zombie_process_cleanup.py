@@ -51,6 +51,7 @@ class TestAgentCloseMethod:
                  patch("run_agent.cleanup_vm") as mock_cleanup_vm, \
                  patch("run_agent.cleanup_browser") as mock_cleanup_browser, \
                  patch("tools.computer_use.tool.release_computer_use_session") as mock_cleanup_cua:
+                mock_registry.spared_by_restart.return_value = False  # no gateway restart in progress
                 mock_registry.list_sessions.return_value = [
                     {"session_id": "owned", "owner_task_id": "sa-owned", "status": "running"},
                     {"session_id": "foreign", "owner_task_id": "parent", "status": "running"},
