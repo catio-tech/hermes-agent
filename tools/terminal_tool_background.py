@@ -229,6 +229,10 @@ def spawn_background_process(
         if watch_patterns:
             proc_session.watch_patterns = list(watch_patterns)
             result_data["watch_patterns"] = proc_session.watch_patterns
+        if notify_on_complete or watch_patterns:
+            # The spawn checkpointed the job before it was armed: a restart now must re-adopt it with
+            # its watcher and routing, not as a silent job whose completion is dropped undelivered.
+            process_registry._write_checkpoint()
         return json.dumps(result_data, ensure_ascii=False)
     except Exception as e:
         return json.dumps({
@@ -287,3 +291,4 @@ def _stamp_routing_if_gateway(process_registry, session, session_key) -> None:
     _stamp_gateway_routing(session, get_session_env)
     if session.watcher_platform:
         _register_completion_watcher(process_registry, session, session_key)
+    process_registry._write_checkpoint()  # adoption checkpointed it unarmed (see spawn_background_process)
