@@ -2048,7 +2048,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
             **self._status_head(session), "output": "\n".join(selected),
             "total_lines": total_lines, "showing": f"{len(selected)} lines"}
         if exited and observed_completion_output and not finalizing:
-            self._completion_consumed.add(session_id)
+            self._consume_completion(session_id)
         return result
 
     def wait(self, session_id: str, timeout: int | None = None) -> dict:
@@ -2082,7 +2082,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
             self._reconcile_local_exit(session)  # orphaned-pipe reader guard
             result = None
             if session.exited and not self._reader_finalizing(session):
-                self._completion_consumed.add(session_id)
+                self._consume_completion(session_id)
                 result = self._exit_snapshot(session, "exited")
             elif _is_interrupted():
                 result = {

@@ -105,6 +105,17 @@ class ProcessCheckpointMixin:
                          and (_exit_path(log).exists() or self._detached_host_fate(
                              entry.get("pid"), entry.get("host_start_time")) == "running")))]
 
+    def _consume_completion(self, session_id: str) -> None:
+        """The agent read the result itself (wait/log): no wake is due any more, so the first read also
+        drops a persisted one from the checkpoint (a restart must not replay a consumed completion)."""
+        with self._lock:
+            first = session_id not in self._completion_consumed
+            self._completion_consumed.add(session_id)
+            session = self._finished.get(session_id)
+            persisted = first and session is not None and bool(session._wake_checkpoint)
+        if persisted:
+            self._write_checkpoint()
+
     def mark_completion_delivered(self, session_id: str) -> None:
         """The gateway watcher finished routing this completion (delivered, deduplicated, dropped as
         terminal or sent as the plain notice): drop its wake from the checkpoint. Idempotent."""

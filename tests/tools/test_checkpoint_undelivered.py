@@ -108,3 +108,18 @@ def test_stale_wake_is_not_replayed(checkpoint):
     registry = ProcessRegistry()
     registry.recover_from_checkpoint()
     assert registry.pending_watchers == [] and _entries(checkpoint) == []
+
+
+@pytest.mark.platforms("linux", "macos")
+@pytest.mark.parametrize("read", ["wait", "read_log"])
+def test_reading_the_result_drops_the_persisted_wake(checkpoint, tmp_path, read):
+    """The agent consumed the result itself: a restart before the watcher's next tick must not replay it."""
+    from tools.process_registry import ProcessRegistry
+    registry = ProcessRegistry()
+    done = finish_armed(registry, tmp_path)
+    assert [e["session_id"] for e in _entries(checkpoint)] == [done.id]
+    getattr(registry, read)(done.id, **({"timeout": 5} if read == "wait" else {}))
+    assert _entries(checkpoint) == []
+    boot = ProcessRegistry()
+    boot.recover_from_checkpoint()
+    assert boot.pending_watchers == []

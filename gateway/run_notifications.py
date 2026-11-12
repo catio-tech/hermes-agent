@@ -1869,13 +1869,10 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
     async def _run_process_watcher(self, watcher: dict) -> None:
         """Run :meth:`_watch_process` inside the owning profile's scope, start to finish. A watcher starts
         in an empty context (live-armed from a tool thread, or recovered at startup), and the output it
-        prepares runs that profile's own ``transform_terminal_output`` hooks before any delivery. A watcher
-        that returns has routed the completion for good, so its checkpointed wake is acked (in that profile's
-        scope); a cancelled one (restart mid-retry) leaves the wake for the next gateway to replay."""
-        from tools.process_registry import process_registry
-        async with self._completion_event_scope(watcher):
-            await self._watch_process(watcher)
-            process_registry.mark_completion_delivered(watcher["session_id"])
+        prepares runs that profile's own ``transform_terminal_output`` hooks before any delivery. The
+        checkpointed wake is acked only when the watcher returns (``gateway/run_notifications_watch.py``)."""
+        from gateway.run_notifications_watch import run_watcher_with_ack
+        await run_watcher_with_ack(self, watcher)
 
     async def _watch_process(self, watcher: dict) -> None:
         """Poll a background process and push updates until it exits. Mode
@@ -1944,6 +1941,11 @@ class GatewayNotificationsMixin(GatewayUpdateNotificationsMixin, GatewayNotifica
                         break
                     # A refusal may clear (adapter reconnecting, store draining), so retry with backoff
                     # for a few minutes, then fall through to the plain notice instead of dropping it.
+                    # A drain/stop refusal spends no attempt: the stop cancels us and the boot replays.
+                    from gateway.run_notifications_watch import refused_by_shutdown
+                    if refused_by_shutdown(self):
+                        retry_interval = interval
+                        continue
                     completion_attempts += 1
                     if completion_attempts < _MAX_COMPLETION_INJECTION_ATTEMPTS:
                         retry_interval = jittered_backoff(
