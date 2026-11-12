@@ -2224,7 +2224,7 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
         _stop_guards = getattr(self, "_stop_loop_liveness_guards", None)
         if callable(_stop_guards):
             _stop_guards()
-        if restart:
+        if restart and not getattr(self, "_final_stop_requested", False):  # a planned stop overrides it
             from gateway.run_shutdown_kill import begin_restart_handoff
             begin_restart_handoff()
             self._restart_requested = True

@@ -201,6 +201,9 @@ def _start_gateway_make_shutdown_signal_handler(runner, _signal_initiated_shutdo
             planned_stop_seen[0] = True
         elif planned_stop_seen[0] and not planned_takeover:
             planned_stop = True
+        if planned_stop:  # final even mid-restart: no successor starts, so no job is handed off
+            from gateway.run_shutdown_kill import cancel_pending_restart
+            cancel_pending_restart(runner)
         _shutdown_ctx = _best_effort(_snapshot, "snapshot_shutdown_context failed: %s")
         sig_name = _shutdown_ctx["signal"] if _shutdown_ctx else None
 

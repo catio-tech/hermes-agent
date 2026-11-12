@@ -34,6 +34,9 @@ class ProcessOwnershipMixin:
     def begin_restart_handoff(self) -> None:
         self._restart_handoff = True
 
+    def end_restart_handoff(self) -> None:  # a planned stop overrode the pending restart
+        self._restart_handoff = False
+
     def spared_by_restart(self, session_id: str) -> bool:
         return self._restart_handoff and survives_host_restart(self._running.get(session_id))
 
