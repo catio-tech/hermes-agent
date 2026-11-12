@@ -46,6 +46,9 @@ class _FakeRegistry:
             return self._sessions.pop(0)
         return None
 
+    def mark_completion_delivered(self, session_id):
+        pass
+
     def is_completion_consumed(self, session_id):
         return self._consumed
 

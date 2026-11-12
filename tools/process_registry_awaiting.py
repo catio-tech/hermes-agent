@@ -91,9 +91,20 @@ def drained_for(registry, owns):
 
 
 def retained_for_delivery(s) -> bool:
-    """A finished entry whose completion is not yet published: pruning it would erase the only record that a notice
-    is coming, so the registry keeps it until publication."""
-    return bool(getattr(s, "_finish_claimed", False)) and not s._completion_event.is_set()
+    """A finished entry whose completion is not yet published, or whose gateway watcher has not finished routing it
+    (``awaits_wake``): pruning it would erase the only record that a notice is coming, so the registry keeps it."""
+    return (bool(getattr(s, "_finish_claimed", False)) and not s._completion_event.is_set()) or awaits_wake(s)
+
+
+def awaits_wake(s, now: float | None = None) -> bool:
+    """A finished, notify-armed completion its gateway watcher has not acked (``mark_completion_delivered``). It stays
+    in processes.json so the next gateway replays it after a restart; delivery dedupes on the producer identity
+    ``(completion, session_id, started_at)``. A final stop's kills (``gateway_shutdown``) are not replayed."""
+    from tools.async_delegation import _MAX_COMPLETION_REPLAY_AGE_S
+    import time
+    return bool(s.exited and s.notify_on_complete and s.watcher_interval > 0 and not s.completion_delivered
+                and not s.sandbox_key and s.termination_source != "gateway_shutdown"
+                and (now or time.time()) - s.exited_at < _MAX_COMPLETION_REPLAY_AGE_S)
 
 
 def _notifies(s) -> bool:
