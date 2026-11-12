@@ -204,7 +204,9 @@ async def test_restart_wait_ws_serves_the_parked_turn_and_refuses_every_other_ve
 async def test_restart_wait_queues_only_interactive_input(tmp_path, monkeypatch):
     """Only the interactive WS submit commits queued input during the wait; a2a, kanban and hosted
     rooms call ``authority.submit`` directly and keep the plain refusal, so none of them can read a
-    released waiter as failure and resubmit the same input under a new request id."""
+    released waiter as failure and resubmit the same input under a new request id. Native messaging
+    (``_admit_native`` under ``native_queue_open``) is the second queue-only caller: safe because its
+    request id is the stable platform message id, so a redelivery reconciles instead of duplicating."""
     from gateway.config import Platform
     from gateway.session import SessionSource
     from gateway.session_authority import LiveSession, SessionAuthority
