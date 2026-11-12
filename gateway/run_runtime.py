@@ -754,6 +754,7 @@ async def drain_gateway_runtime(runner):
     # failed stop. Only fetching adapters implement the seam; they stop together under one bound so
     # a wedged fetcher cannot eat the leash the turn settle needs.
     await _stop_adapters_inbound(runner)
+    runner._native_queue_closed = True  # nothing fetches now: native_queue_open's window ends here
     # Withdraw the public ingress callback without disconnecting egress needed
     # by already admitted work. Base adapters refuse before stamping acceptance.
     for adapter in runner.adapters.values():

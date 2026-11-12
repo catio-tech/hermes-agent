@@ -241,14 +241,13 @@ class SessionAuthority:
         touch_restored(self, ref.session_id)  # a rename or a read brought a retired one back
 
     def _require_admission_open(self, *, queue_only=False):
-        """``queue_only``: the caller only COMMITS a queued row (never claims or runs it). A restart's
-        after-turn wait accepts those (#139041): the row is durable FIFO input the next owner runs
-        exactly once, while this owner's claim path stays refused."""
+        """``queue_only``: the caller only COMMITS a queued row (never claims it) that the next owner runs exactly
+        once. Accepted in a restart's after-turn wait (#139041) and native_queue_open; claims stay refused."""
         if self.retiring:
             raise RuntimeStoreError('runtime_draining')
         if self.runner._draining:
-            from gateway.drain_control import restart_wait_open
-            if not (queue_only and restart_wait_open(self.runner)):
+            from gateway.drain_control import queue_window_open
+            if not (queue_only and queue_window_open(self.runner)):
                 raise RuntimeStoreError('runtime_draining')
 
     def _admission_gate(self, authorize=None, *, queue_only=False):
@@ -275,10 +274,10 @@ class SessionAuthority:
     def register(self, source):
         return self._publish_route(source, *self._reserve_route(source))
 
-    def _reserve_route(self, source):
+    def _reserve_route(self, source, *, queue_only=False):
         """The durable half of ``register`` (routing entry + reserved row): thread-safe, so async
         callers run it off the owner loop and publish the live entry on the loop."""
-        self._require_admission_open()
+        self._require_admission_open(queue_only=queue_only)
         entry = self.runner.session_store.get_or_create_session(source)
         sid = self.logical_owner(entry.session_id)
         # SessionStore reserves routing metadata before the first AIAgent exists.
@@ -286,8 +285,8 @@ class SessionAuthority:
             self.db.create_session(sid, source=source.platform.value)
         return sid, entry.session_key
 
-    def _publish_route(self, source, sid, route):
-        self._require_admission_open()
+    def _publish_route(self, source, sid, route, *, queue_only=False):
+        self._require_admission_open(queue_only=queue_only)
         if sid not in self.sessions:
             self.sessions[sid] = LiveSession(source, route)
         self.name_lane(route, sid, source)
@@ -578,14 +577,16 @@ class SessionAuthority:
     async def _admit_native(self, event, fence=None):
         import json
         from gateway.session_envelope import prepare_native, restore_native_source
-        self._require_admission_open()
+        from gateway import drain_control, session_retry_admission
+        self._require_admission_open(queue_only=(queue_only := drain_control.native_queue_open(self.runner)))
         payload = await prepare_native(self.runner, event)
         if fingerprint := getattr(event, '_ingress_sha256', None):
             payload['native_text_v1']['ingress_sha256'] = fingerprint  # the delivery before a rewrite
-        self._require_admission_open()
+        self._require_admission_open(queue_only=queue_only)
         source = restore_native_source(payload)  # no re-hash of the just-captured media on the loop
         from gateway.session_runtime_workers import tracked_write
-        ref = self._publish_route(source, *await tracked_write(self, partial(self._reserve_route, source)))
+        reserved = await tracked_write(self, partial(self._reserve_route, source, queue_only=queue_only))
+        ref = self._publish_route(source, *reserved, queue_only=queue_only)
         identity = json.dumps([source.profile, source.platform.value, source.chat_id,
                                source.thread_id, source.user_id], separators=(',', ':'))
         request_id = str(payload['native_text_v1']['event']['message_id'] or uuid.uuid4().hex)
@@ -593,7 +594,6 @@ class SessionAuthority:
             request_id += ':edit:' + revision  # an edit is its own input, not a changed replay of the send
         committed = [ref]  # the row's target: the write may retarget a rotated-away reservation
         # A /retry re-send carries its transcript rewrite: it commits in this admission's own write.
-        from gateway import session_retry_admission
         rewrite = session_retry_admission.take(event, self.db)
 
         def admitted(row):
@@ -608,7 +608,7 @@ class SessionAuthority:
         return await tracked_write(self, partial(
             self._admit_native_write, principal_id='messaging:' + identity, session_id=ref.session_id,
             request_id=request_id, payload=payload,
-            authorize=session_retry_admission.compose(rewrite, self._admission_gate(fence)),
+            authorize=session_retry_admission.compose(rewrite, self._admission_gate(fence, queue_only=queue_only)),
             raw=getattr(event, 'raw_message', None)),
             then=admitted, ordered=True, after=lambda _receipt: self._schedule_admitted(committed[0]))
 

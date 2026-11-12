@@ -10,6 +10,7 @@ from gateway.session_envelope import restore_native
 from gateway.session_producer_lifecycle import close_producer_turn, producer_turn
 from hermes_cli.observability.shared_metrics_busy import (
     busy_turn_started, note_busy_admitted, note_busy_parked, settle_busy_arrival)
+from agent.i18n import t
 from hermes_state_runtime import RuntimeStoreError
 
 logger = logging.getLogger(__name__)
@@ -79,14 +80,18 @@ async def admit_message(authority, event):
     status = 'terminal' if row is None else row['status']  # None: deleted with its chat, nothing owed
     note_busy_admitted(event, receipt.admission_id, status, None if row is None else row.get('outcome'))
     if status in ('terminal', 'unknown'):
-        authority.native_waiters.discard(receipt.admission_id)
-        if authority.waiters.get(receipt.admission_id) is waiter:
-            del authority.waiters[receipt.admission_id]
-        if adopters.get(receipt.admission_id) is event:
-            del adopters[receipt.admission_id]
+        _forget_waiter(authority, receipt.admission_id, waiter, adopters, event)
         return None if status == 'terminal' else pause_notice(authority, receipt.ref, 'unknown_execution')
     if accepted is not None and not accepted.done():
         accepted.set_result(None)
+    from gateway.drain_control import native_queue_open
+    if status == 'queued' and native_queue_open(authority.runner):
+        # Committed for the next owner during a pending restart: this owner never claims it, so say
+        # so now instead of awaiting the in-flight turn. The next owner's FIFO runs it after boot and
+        # ``deliver_settled`` sends that reply (no live waiter). Only after the commit: never a false "saved".
+        _forget_waiter(authority, receipt.admission_id, waiter, adopters, event)
+        note_busy_parked(event)
+        return pause_notice(authority, receipt.ref, 'runtime_draining')
     try:
         return await asyncio.shield(waiter)
     except RuntimeStoreError as exc:
@@ -101,6 +106,15 @@ async def admit_message(authority, event):
     finally:
         if adopters.get(receipt.admission_id) is event:
             del adopters[receipt.admission_id]
+
+
+def _forget_waiter(authority, admission_id, waiter, adopters, event):
+    """Drop this caller's process-local delivery registrations for *admission_id*."""
+    authority.native_waiters.discard(admission_id)
+    if authority.waiters.get(admission_id) is waiter:
+        del authority.waiters[admission_id]
+    if adopters.get(admission_id) is event:
+        del adopters[admission_id]
 
 
 def _marker_adopters(authority):
@@ -244,10 +258,10 @@ def pause_notice(authority, ref, reason):
     live.pause_notified = True
     if reason == 'runtime_draining':
         # Transient: the row runs when the restarted owner drains it, so /reset would be wrong advice.
-        return '⏳ Hermes is restarting — your message is saved and will be answered when it is back.'
+        return t('gateway.busy.drain_saved')
     if reason == 'session_busy':
         # Transient: queued behind work already running on this conversation (a worker execution).
-        return '⏳ Your message is saved and will be answered when the work running in this conversation finishes.'
+        return t('gateway.busy.saved_behind_work')
     if reason == 'unknown_execution':
         # GW-10: the way out is in this chat. /discard acknowledges the lost turn (never replayed)
         # through the same fenced resolve_unknown as Desktop/TUI, and the saved messages then run.

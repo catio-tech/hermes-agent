@@ -47,6 +47,39 @@ def restart_wait_open(runner) -> bool:
             and descriptor.get("drain_reason") == RESTART_WAIT_REASON)
 
 
+def native_queue_open(runner) -> bool:
+    """True while a pending restart still lets native messaging COMMIT queued rows for the next owner.
+
+    Wider than :func:`restart_wait_open`: it also spans ``stop()``'s pre-inbound-stop gap, where a
+    fetcher (Slack Bolt, Telegram long-poll) may still ack an update that a refusal would lose, and
+    closes only once ``drain_gateway_runtime`` has stopped inbound (``_native_queue_closed``). A
+    planned stop that overrode the restart (``cancel_pending_restart``: ``_final_stop_requested``)
+    has no successor to run the row, so it never opens."""
+    return (bool(getattr(runner, "_draining", False)) and bool(getattr(runner, "_restart_requested", False))
+            and bool(getattr(runner, "_running", False)) and not getattr(runner, "_final_stop_requested", False)
+            and not getattr(runner, "_native_queue_closed", False))
+
+
+def queue_window_open(runner) -> bool:
+    """A queue-only commit is accepted: the restart's after-turn wait or the native queue window."""
+    return restart_wait_open(runner) or native_queue_open(runner)
+
+
+def turn_error_texts(exc, runner=None) -> tuple:
+    """The (diagnostic, plain) turn-error notice for *exc*. A ``runtime_draining`` refusal committed
+    nothing and is transient, so it asks for a resend: no exception name and no /reset advice."""
+    from agent.i18n import t
+    from hermes_state_runtime import RuntimeStoreError
+    if isinstance(exc, RuntimeStoreError) and exc.reason == "runtime_draining":
+        gerund = getattr(runner, "_status_action_gerund", None)
+        action = gerund() if callable(gerund) else t("gateway.busy.action_shutting_down")
+        notice = t("gateway.busy.drain_not_saved", action=action)
+        return notice, notice
+    detail = str(exc)[:300] if str(exc) else t("gateway.notify.turn_error_no_details")
+    return (t("gateway.notify.turn_error_detailed", error_type=type(exc).__name__, error_detail=detail),
+            t("gateway.notify.turn_error"))
+
+
 # The requests a client needs during that wait to find, open and answer the conversation parked on
 # approval/clarify: the GET reads below (Desktop's session picker, the session detail and its
 # transcript pages, and the health probes) and one write, a Webapp tab's mint of the one-use ticket
