@@ -37,7 +37,7 @@ from tools.process_registry_notifications import (
     format_process_notification, heartbeat_output_tail, is_child_process_notification, should_surface_notification)
 from tools.process_registry_checkpoint import ProcessCheckpointMixin
 from tools.process_registry_env_scope import ProcessEnvScopeMixin
-from tools.process_registry_output_log import ProcessOutputLogMixin, open_output_log, record_exit_command, worker_output_log
+from tools.process_registry_output_log import ProcessOutputLogMixin, open_output_log, record_exit_command, background_output_log
 from tools.process_registry_ownership import ProcessOwnershipMixin
 from tools.process_registry_termination import ProcessTerminationMixin
 from tools.process_registry_results import load_completed_results, save_completed_result
@@ -588,6 +588,7 @@ class ProcessSession:
     # session was closed at a user boundary (/new) instead of injecting into the NEW one.
     parent_session_id: str = ""
     notify_on_complete: bool = False            # Queue agent notification on exit
+    completion_delivered: bool = False          # the gateway watcher finished routing the completion (awaits_wake)
     completion_output_chars: int = 0            # Output chars the completion carries; 0 = COMPLETION_OUTPUT_CHARS
     watch_patterns: list[str] = field(default_factory=list)
     heartbeat_seconds: int = 0                  # 0 = off; else a "heartbeat" event every N s while running
@@ -609,6 +610,7 @@ class ProcessSession:
     # The last stop of ``systemd_unit`` failed, so its descendants may still be alive; bulk
     # cleanup retries the stop even after the session finished.
     _scope_stop_pending: bool = field(default=False, repr=False)
+    _wake_checkpoint: str = field(default="", repr=False)  # the profile checkpoint an undelivered wake lives in
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _reader_thread: Optional[threading.Thread] = field(default=None, repr=False)
     _reader_finish_requested: threading.Event = field(default_factory=threading.Event, repr=False)
@@ -1196,8 +1198,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         session = self._new_session(command, task_id, owner_task_id, session_key, _resolve_safe_cwd(cwd or os.getcwd()),
                                     persist_on_release=persist_on_release)
         pty_scope_attempted = False
-        # A worker's pipe or PTY dies with the worker (the child's next write is SIGPIPE): write to a log.
-        log = worker_output_log(session.id)
+        # A pipe or PTY dies with its reader (the child's next write is SIGPIPE): a job that outlives it logs.
+        log = background_output_log(session.id, use_pty=use_pty)
         if use_pty and log is None:
             try:
                 return self._spawn_local_pty(session, safe_command, env_vars)
@@ -2046,7 +2048,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
             **self._status_head(session), "output": "\n".join(selected),
             "total_lines": total_lines, "showing": f"{len(selected)} lines"}
         if exited and observed_completion_output and not finalizing:
-            self._completion_consumed.add(session_id)
+            self._consume_completion(session_id)
         return result
 
     def wait(self, session_id: str, timeout: int | None = None) -> dict:
@@ -2080,7 +2082,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
             self._reconcile_local_exit(session)  # orphaned-pipe reader guard
             result = None
             if session.exited and not self._reader_finalizing(session):
-                self._completion_consumed.add(session_id)
+                self._consume_completion(session_id)
                 result = self._exit_snapshot(session, "exited")
             elif _is_interrupted():
                 result = {
@@ -2522,18 +2524,10 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         timeout, or ``agent_close``): an explicitly persisted background job must survive
         session end / compression / error recovery (#41225). An explicit operator stop
         (``process.kill`` via process_manage, CLI /stop) passes its own source and still
-        reaches them, so the user can always stop a persisted process on purpose."""
-        from tools.environments.sandbox_scope import sandbox_visible
-        lifecycle = source in self._LIFECYCLE_KILL_SOURCES
-        # A sweep reaches only the current activity's own processes; a hosted agent's run in its
-        # sandbox and end with it (its kill would go through that agent's scope anyway).
-        with self._lock:
-            targets = [
-                s for s in (*self._running.values(), *self._finished.values())
-                if (task_id is None or s.owner_task_id == task_id) and sandbox_visible(s.sandbox_key)
-                and s.id not in exclude_ids and (not s.exited or s._scope_stop_pending)
-                and not (lifecycle and s.persist_on_release)
-            ]
+        reaches them, so the user can always stop a persisted process on purpose. ``gateway_restart``
+        (and every sweep after it) spares the jobs a successor gateway re-adopts (``survives_host_restart``);
+        ``gateway_shutdown``, a final stop, kills everything."""
+        targets = self._sweep_targets(task_id, exclude_ids, source)
         results = [self.kill_process(s.id, source=source, consume_output=consume_output) for s in targets]
         return sum(
             r.get("status") in {"killed", "already_exited"} and "scope_stop_failed" not in r

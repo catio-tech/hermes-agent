@@ -113,8 +113,9 @@ class ClientLifecycleMixin:
                 if process["owner_task_id"] in owners and process["status"] == "running":
                     # An explicitly persisted job (terminal persist_on_release=true) survives
                     # agent close — session end, compression, error recovery (#41225). The
-                    # user can still stop it on purpose via process_manage kill.
-                    if process.get("persist_on_release"):
+                    # user can still stop it on purpose via process_manage kill. During a graceful
+                    # gateway restart, so does a job the successor re-adopts.
+                    if process.get("persist_on_release") or process_registry.spared_by_restart(process["session_id"]):
                         continue
                     process_registry.kill_process(
                         process["session_id"], source="agent_close", consume_output=True,

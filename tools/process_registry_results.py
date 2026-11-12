@@ -1,7 +1,8 @@
 """Bounded, profile-local receipts for completed terminal processes.
 
 Receipts are read through process_manage, never replayed as notifications or
-adopted as live PIDs. Each producer writes its own file so independent one-shot
+adopted as live PIDs (an undelivered wake replays from processes.json and only
+takes its output from here). Each producer writes its own file so independent one-shot
 parents cannot overwrite each other's results in the running-PID checkpoint.
 """
 
@@ -86,6 +87,15 @@ def _owns_result(owner: str, parent: str | None) -> bool:
         return db.get_compression_tip(parent) == owner
     finally:
         db.close()
+
+
+def receipt_output(session_id: str) -> str:
+    """The redacted output tail this profile's receipt kept for ``session_id`` ("" when gone)."""
+    path = get_hermes_home() / "logs" / "process-results" / f"{session_id}.json"
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8-sig"))["output"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
 
 
 def load_completed_results(prefix: str = "") -> dict:
