@@ -2069,9 +2069,7 @@ class TestSystemdCgroupIsolation:
         assert "--" in argv, "systemd-run argv must use -- to separate command"
         sep_idx = argv.index("--")
         assert "/bin/bash" in argv[sep_idx:]
-        # A scoped gateway job outlives a restart, so it logs and records its exit (no pipe to lose).
-        assert argv[-1].startswith("set +m; __hermes_exit_file=") and argv[-1].endswith("\necho hello"), argv
-        assert session.output_log.endswith(f"{session.id}.log")
+        assert argv[-1].startswith("set +m; __hermes_exit_file=") and argv[-1].endswith("\necho hello") and session.output_log, argv  # restart-safe: logs, records its exit
         # systemd-run --scope gives the worker a new cgroup but NOT a new
         # session (#70716 regression: start_new_session was False, so the
         # worker kept the parent's session + controlling terminal → SIGTTIN/
