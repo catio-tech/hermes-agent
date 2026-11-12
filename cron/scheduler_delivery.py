@@ -568,7 +568,15 @@ def _origin_thread_is_stale(origin: dict) -> bool:
     pinned thread is that artifact and delivery goes top-level (or to the home target's thread)."""
     if str(origin.get("platform") or "").lower() != "slack" or not origin.get("thread_id"):
         return False
-    home_chat = _get_home_target_chat_id("slack")
+    from agent.secret_scope import UnscopedSecretError
+    try:
+        home_chat = _get_home_target_chat_id("slack")
+    except UnscopedSecretError:
+        # A caller missed the profile scope: keep the recorded thread (same chat, no cross-profile
+        # read) rather than fail the whole delivery over a heuristic.
+        logger.warning("Slack home channel unreadable without a profile secret scope; keeping the "
+                       "origin thread", exc_info=True)
+        return False
     return bool(home_chat) and str(origin.get("chat_id")) == str(home_chat)
 
 
