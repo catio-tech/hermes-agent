@@ -4,7 +4,7 @@ from it, and the real ``hermes update`` to the next commit, all in one shared PI
 Two columns, both git-mode installs over a local bare ``origin`` (the official URL rewritten to it,
 so the updater takes the normal non-fork path and never touches the network):
 
-* ``n1``: ``main`` parked at release N-1 (``git describe --tags --abbrev=0 HEAD~1``, overridable with
+* ``n1``: ``main`` parked at release N-1 (``_install_helpers.upgrade_base``, overridable with
   ``HERMES_E2E_UPGRADE_BASE``), its venv built from N-1's own ``uv.lock`` (the installer's tier 0),
   then ``main`` moves to HEAD;
 * ``head``: HEAD's ``scripts/install.sh`` into an empty HOME, then ``main`` gets NEXT, a synthetic
@@ -457,10 +457,15 @@ def restart_wait_verdict(inst: Install, slack_s: float = 15.0) -> str:
 
 
 def settle_gateway(inst: Install, old_pid: int, *, timeout: float = 180) -> dict | None:
-    """Wait for a gateway serving ``inst.target`` under a new PID; None if none shows up."""
+    """Wait for a gateway serving ``inst.target`` under a new PID; None if none shows up.
+
+    Serving means what ``start_gateway`` waits for: the control socket answers ``identify``
+    (it does from early boot, ``state: starting``) AND the API server answers ``/health``."""
     def serving():
         ident = identify(inst.hermes_home)
-        return ident if ident and ident.get("pid") != old_pid and ident.get("code_sha") == inst.target else None
+        if not (ident and ident.get("pid") != old_pid and ident.get("code_sha") == inst.target):
+            return None
+        return ident if health(inst.port) else None
     try:
         return wait_for(serving, timeout=timeout, what="a relaunched gateway", interval=1.0)
     except AssertionError:

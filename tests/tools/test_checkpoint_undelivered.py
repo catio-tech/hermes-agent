@@ -17,7 +17,7 @@ import pytest
 def checkpoint(tmp_path, monkeypatch):
     from tools import process_registry as pr
     path = tmp_path / "processes.json"
-    monkeypatch.setattr(pr, "CHECKPOINT_PATH", path)
+    monkeypatch.setattr(pr, "_checkpoint_path", lambda: path)
     return path
 
 

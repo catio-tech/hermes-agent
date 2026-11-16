@@ -21,7 +21,7 @@ def boot(tmp_path, monkeypatch):
     """Each call is a fresh gateway boot: a new registry recovers the checkpoint, a runner runs its watchers."""
     import gateway.run as gateway_run
     from tools import process_registry as pr
-    monkeypatch.setattr(pr, "CHECKPOINT_PATH", tmp_path / "processes.json")
+    monkeypatch.setattr(pr, "_checkpoint_path", lambda: tmp_path / "processes.json")
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     real_sleep = asyncio.sleep
 
@@ -169,7 +169,7 @@ def _job_outlives_its_gateway_and_exits(tmp_path, home):
     spawner = textwrap.dedent(f"""
         import json, os, pathlib
         import tools.process_registry as pr
-        pr.CHECKPOINT_PATH = pathlib.Path({str(tmp_path / "processes.json")!r})
+        pr._checkpoint_path = lambda: pathlib.Path({str(tmp_path / "processes.json")!r})
         pr._is_supervised_gateway_process = lambda: True
         pr._systemd_run_user_scope_available = lambda: True
         pr._build_systemd_scope_argv = lambda argv, unit_suffix: argv

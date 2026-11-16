@@ -18,7 +18,7 @@ _ROUTE = {"HERMES_SESSION_PLATFORM": "slack", "HERMES_SESSION_CHAT_ID": "C0TEST"
 def gateway_registry(tmp_path, monkeypatch):
     from gateway import session_context
     from tools import process_registry as pr
-    monkeypatch.setattr(pr, "CHECKPOINT_PATH", tmp_path / "processes.json")
+    monkeypatch.setattr(pr, "_checkpoint_path", lambda: tmp_path / "processes.json")
     monkeypatch.setattr(pr, "_is_supervised_gateway_process", lambda: True)
     monkeypatch.setattr(pr, "_systemd_run_user_scope_available", lambda: True)
     monkeypatch.setattr(pr, "_build_systemd_scope_argv", lambda argv, unit_suffix: argv)

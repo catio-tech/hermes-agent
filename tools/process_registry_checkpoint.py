@@ -7,6 +7,7 @@ instead of losing it: boot restores it as finished and re-arms its watcher, whic
 
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,10 @@ class ProcessCheckpointMixin:
         # it has no host change to write: it neither takes the lock nor rewrites this host's file.
         if hosted_scope() is not None:
             return
+        from agent.runtime_session_store import is_worker_process
+        # Every interpreter on the home writes this file; ``hermes update --force`` sweeps only what
+        # the gateway it killed owns (update_cmd_force_stop): a managed worker's jobs are its owner's.
+        owner_pid = os.getppid() if is_worker_process() else os.getpid()  # windows-footgun: ok — getppid exists on Windows
         try:
             path = _checkpoint_path()
             with self._lock:
@@ -44,9 +49,9 @@ class ProcessCheckpointMixin:
                     # even for sessions spawned before this field existed.
                     if s.host_start_time is None and s.pid_scope == "host" and s.pid:
                         s.host_start_time = self._safe_host_start_time(s.pid)
-                    entries.append(self._checkpoint_entry(s, _CHECKPOINT_FIELDS))
+                    entries.append(self._checkpoint_entry(s, _CHECKPOINT_FIELDS, owner_pid))
                 entries.extend(
-                    {**self._checkpoint_entry(s, _CHECKPOINT_FIELDS), "exited": True, "exited_at": s.exited_at,
+                    {**self._checkpoint_entry(s, _CHECKPOINT_FIELDS, owner_pid), "exited": True, "exited_at": s.exited_at,
                      **self._exit_fields(s)} for s in self._undelivered_wakes(str(path)))
                 if extra_entries:
                     tracked_ids = {item.get("session_id") for item in entries}
@@ -64,7 +69,7 @@ class ProcessCheckpointMixin:
             logger.debug("Failed to write checkpoint file: %s", e, exc_info=True)
 
     @staticmethod
-    def _checkpoint_entry(s, fields) -> dict[str, Any]:
+    def _checkpoint_entry(s, fields, owner_pid=None) -> dict[str, Any]:
         entry = {"session_id": s.id, **{f: getattr(s, f) for f in fields}}
         # Redact inline credentials before persisting (~/.hermes/processes.json).
         # Recovery uses command only for display (adoption re-validates the
@@ -72,6 +77,10 @@ class ProcessCheckpointMixin:
         # See #77484.
         entry["command"] = redact_sensitive_text(s.command, code_file=True)
         entry["owner_task_id"] = s.owner_task_id or s.task_id
+        # The interpreter writing the checkpoint (managed worker records its owner's pid):
+        # hermes update --force sweeps only what the gateway it killed owns.
+        if owner_pid is not None:
+            entry["owner_pid"] = owner_pid
         return entry
 
     def _undelivered_wakes(self, path: str) -> list:

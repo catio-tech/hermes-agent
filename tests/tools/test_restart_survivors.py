@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def gateway_registry(tmp_path, monkeypatch):
     """A registry inside a supervised gateway whose jobs get a (faked) systemd scope."""
     from tools import process_registry as pr
-    monkeypatch.setattr(pr, "CHECKPOINT_PATH", tmp_path / "processes.json")
+    monkeypatch.setattr(pr, "_checkpoint_path", lambda: tmp_path / "processes.json")
     monkeypatch.setattr(pr, "_is_supervised_gateway_process", lambda: True)
     monkeypatch.setattr(pr, "_systemd_run_user_scope_available", lambda: True)
     monkeypatch.setattr(pr, "_build_systemd_scope_argv", lambda argv, unit_suffix: argv)
